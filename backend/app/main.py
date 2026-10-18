@@ -514,8 +514,9 @@ def advise_action_handover(action_id: str):
     resident = _resident_row(action["resident_id"])
     flags = [flag for flag in _flags() if flag["id"] == action["flag_id"]] if action["flag_id"] else []
     incidents = [item for item in _incidents() if item["id"] == action["incident_id"]] if action["incident_id"] else []
+    notes = [item for item in _notes() if item["resident_id"] == action["resident_id"]]
     try:
-        text = draft_concern_handover(flags, incidents, action)
+        text = draft_concern_handover(resident, flags, incidents, notes, action)
     except DraftError as exc:
         raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
     with session() as conn:

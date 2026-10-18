@@ -38,6 +38,7 @@ import {
   sourceQuote,
   stack,
   tag,
+  tone,
 } from "../ui.js";
 
 const role = ROLES[1];
@@ -115,9 +116,6 @@ export default function SeniorPage() {
   const [tab, setTab] = useState("approvals");
   const [approvalTab, setApprovalTab] = useState("notes");
   const [residentId, setResidentId] = useState("arthur");
-  const [pickedFlags, setPickedFlags] = useState([]);
-  const [pickedIncidents, setPickedIncidents] = useState([]);
-  const [sourceTab, setSourceTab] = useState("flags");
   const [adviceByResident, setAdviceByResident] = useState({});
   const [handoverAdvice, setHandoverAdvice] = useState({});
 
@@ -131,9 +129,6 @@ export default function SeniorPage() {
   const actionResident = residents?.find((item) => item.id === actionResidentId);
   const actionSources = actionResident ? residentSources(actionResident.id, flags, incidents) : { flags: [], incidents: [] };
   const shownAdvice = adviceByResident[actionResidentId] || [];
-  const selectedFlags = actionSources.flags.filter((flag) => pickedFlags.includes(flag.id));
-  const selectedIncidents = actionSources.incidents.filter((item) => pickedIncidents.includes(item.id));
-  const selectedCount = selectedFlags.length + selectedIncidents.length;
   const personActions = (shiftActions || []).filter((item) => item.residentId === actionResidentId);
 
   function adviceSource(item) {
@@ -170,18 +165,22 @@ export default function SeniorPage() {
     }));
   }
 
-  async function createActions() {
+  async function generateOne(flagId, incidentId) {
     const result = await adviseActions(
       actionResidentId,
-      selectedFlags.map((flag) => flag.id),
-      selectedIncidents.map((item) => item.id),
+      flagId ? [flagId] : [],
+      incidentId ? [incidentId] : [],
     );
     if (!result?.actions) return;
     setAdviceByResident((current) => ({
       ...current,
-      [actionResidentId]: result.actions,
+      [actionResidentId]: [
+        ...(current[actionResidentId] || []).filter((item) =>
+          flagId ? item.flagId !== flagId : item.incidentId !== incidentId,
+        ),
+        ...result.actions,
+      ],
     }));
-    setSourceTab("actions");
   }
 
   return (
@@ -251,7 +250,7 @@ export default function SeniorPage() {
           {tab === "actions" && (
             <section className={`${noteDesk} min-w-0`}>
               <p className="rounded-xl bg-paper px-3.5 py-3 text-body">
-                Choose a name. Create from flags or incidents. Generated actions shows the points.
+                Choose a name. Each card shows the note and the flag or incident. The actions show in full once they are written.
               </p>
               {residents.length === 0 ? (
                 <p className={settled}>Add a resident before assigning an action.</p>
@@ -276,109 +275,42 @@ export default function SeniorPage() {
                       })}
                     </div>
                   </div>
-                  <Tabs
-                    label="Flags or incidents"
-                    tabs={[
-                      { id: "flags", label: "Flags" },
-                      { id: "incidents", label: "Incidents" },
-                      { id: "actions", label: "Generated actions" },
-                    ]}
-                    current={sourceTab}
-                    onChange={setSourceTab}
-                  />
-                  {sourceTab === "flags" && (
-                    <div className="min-w-0">
-                      <p className="mb-2.5 text-sm font-medium text-soft">{selectedFlags.length} selected</p>
-                      {actionSources.flags.length === 0 && <p className={settled}>No flags yet.</p>}
-                      <div className={stack}>
-                        {actionSources.flags.map((flag) => (
-                          <SourceCard
-                            key={flag.id}
-                            kind="Flag"
-                            label={labelFor(FLAG_KINDS, flag.kind)}
-                            title={flag.title}
-                            detail={withoutName(flag.why, actionResident.name)}
-                            from={noteLabel(notes.find((note) => note.id === flag.noteId))}
-                            selected={pickedFlags.includes(flag.id)}
-                            onSelect={() =>
-                              setPickedFlags((current) =>
-                                current.includes(flag.id)
-                                  ? current.filter((id) => id !== flag.id)
-                                  : [...current, flag.id],
-                              )
-                            }
-                          />
-                        ))}
-                      </div>
-                      <GenerateActions
-                        count={selectedCount}
-                        busy={busyId === `actions-${actionResidentId}`}
-                        onCreate={createActions}
-                      />
-                    </div>
-                  )}
-                  {sourceTab === "incidents" && (
-                    <div className="min-w-0">
-                      <p className="mb-2.5 text-sm font-medium text-soft">{selectedIncidents.length} selected</p>
-                      {actionSources.incidents.length === 0 && <p className={settled}>No open incidents.</p>}
-                      <div className={stack}>
-                        {actionSources.incidents.map((incident) => (
-                          <SourceCard
-                            key={incident.id}
-                            kind="Incident"
-                            label={labelFor(INCIDENT_KINDS, incident.kind)}
-                            title={withoutName(incident.summary, actionResident.name)}
-                            selected={pickedIncidents.includes(incident.id)}
-                            onSelect={() =>
-                              setPickedIncidents((current) =>
-                                current.includes(incident.id)
-                                  ? current.filter((id) => id !== incident.id)
-                                  : [...current, incident.id],
-                              )
-                            }
-                          />
-                        ))}
-                      </div>
-                      <GenerateActions
-                        count={selectedCount}
-                        busy={busyId === `actions-${actionResidentId}`}
-                        onCreate={createActions}
-                      />
-                    </div>
-                  )}
-                  {sourceTab === "actions" && (
+                  {actionResident && (
                     <div className={stack}>
-                      {shownAdvice.length === 0 && personActions.length === 0 && (
-                        <p className={settled}>Generated actions show here.</p>
+                      {actionSources.flags.length === 0 && actionSources.incidents.length === 0 && (
+                        <p className={settled}>No flags or incidents yet for this resident.</p>
                       )}
-                      {shownAdvice.map((item) => (
-                        <ActionDraft
-                          key={item.flagId || item.incidentId}
-                          item={item}
-                          source={adviceSource(item)}
-                          note={adviceNote(item)}
-                          busy={busyId === `assign-${item.flagId || item.incidentId}`}
+                      {actionSources.flags.map((flag) => (
+                        <ConcernActions
+                          key={flag.id}
+                          flag={flag}
+                          note={(notes || []).find((entry) => entry.id === flag.noteId)}
+                          name={actionResident.name}
+                          draft={shownAdvice.find((item) => item.flagId === flag.id)}
+                          saved={personActions.filter((item) => item.flagId === flag.id)}
+                          busy={busyId === `actions-${actionResidentId}`}
+                          saving={busyId === `assign-${flag.id}`}
+                          onGenerate={() => generateOne(flag.id, "")}
                           onSave={takeAdvice}
+                          onComplete={completeAction}
+                          completeBusy={busyId}
                         />
                       ))}
-                      {personActions.map((item) => (
-                        <article className={`${record} min-w-0`} key={item.id}>
-                          <header className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <ActionSource item={item} flags={flags} incidents={incidents} notes={notes} name={actionResident.name} />
-                            </div>
-                            <button
-                              type="button"
-                              className={`${item.status === "done" ? ghost : btn} shrink-0 whitespace-nowrap`}
-                              disabled={busyId === item.id}
-                              onClick={() => completeAction(item.id, item.status === "done" ? "open" : "done")}
-                            >
-                              <Spin on={busyId === item.id} />
-                              {item.status === "done" ? "Done" : "Mark done"}
-                            </button>
-                          </header>
-                          <ActionPoints points={actionPoints(item).map((point) => withoutName(point, actionResident.name))} />
-                        </article>
+                      {actionSources.incidents.map((incident) => (
+                        <ConcernActions
+                          key={incident.id}
+                          incident={incident}
+                          note={(notes || []).find((entry) => entry.residentId === actionResident.id)}
+                          name={actionResident.name}
+                          draft={shownAdvice.find((item) => item.incidentId === incident.id)}
+                          saved={personActions.filter((item) => item.incidentId === incident.id)}
+                          busy={busyId === `actions-${actionResidentId}`}
+                          saving={busyId === `assign-${incident.id}`}
+                          onGenerate={() => generateOne("", incident.id)}
+                          onSave={takeAdvice}
+                          onComplete={completeAction}
+                          completeBusy={busyId}
+                        />
                       ))}
                     </div>
                   )}
@@ -387,28 +319,54 @@ export default function SeniorPage() {
             </section>
           )}
           {tab === "handover" && (
-            <section className={stack}>
+            <section className={`${noteDesk} min-w-0`}>
               <p className="rounded-xl bg-paper px-3.5 py-3 text-body">
-                Each saved action has its own handover, from the flag or incident it came from.
+                Choose a name. The note, the flag, and the actions stay visible. The handover shows in full once it is written.
               </p>
-              {residents.length === 0 && <p className={settled}>No residents yet.</p>}
-              {residents.map((person) => (
-                <ResidentHandover
-                  key={person.id}
-                  person={person}
-                  tasks={byStatus(shiftActions).filter((item) => item.residentId === person.id && (item.flagId || item.incidentId))}
-                  flags={flags}
-                  incidents={incidents}
-                  advice={handoverAdvice}
-                  busyId={busyId}
-                  onSave={saveActionHandover}
-                  onAdvise={async (id) => {
-                    const result = await adviseActionHandover(id);
-                    if (!result?.advice) return;
-                    setHandoverAdvice((current) => ({ ...current, [id]: result.advice }));
-                  }}
-                />
-              ))}
+              {residents.length === 0 ? (
+                <p className={settled}>No residents yet.</p>
+              ) : (
+                <>
+                  <div>
+                    <p className={fieldLabel}>Name</p>
+                    <div className="flex flex-wrap gap-2">
+                      {residents.map((person) => {
+                        const chosen = person.id === actionResidentId;
+                        return (
+                          <button
+                            key={person.id}
+                            type="button"
+                            aria-pressed={chosen}
+                            className={chosen ? btn : ghost}
+                            onClick={() => setResidentId(person.id)}
+                          >
+                            {person.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {actionResident && (
+                    <ResidentHandover
+                      person={actionResident}
+                      tasks={byStatus(shiftActions).filter(
+                        (item) => item.residentId === actionResident.id && (item.flagId || item.incidentId),
+                      )}
+                      flags={flags}
+                      incidents={incidents}
+                      notes={notes}
+                      advice={handoverAdvice}
+                      busyId={busyId}
+                      onSave={saveActionHandover}
+                      onAdvise={async (id) => {
+                        const result = await adviseActionHandover(id);
+                        if (!result?.advice) return;
+                        setHandoverAdvice((current) => ({ ...current, [id]: result.advice }));
+                      }}
+                    />
+                  )}
+                </>
+              )}
             </section>
           )}
         </>
@@ -576,7 +534,7 @@ function NoteReview({ note, busyId, onSave, onApprove }) {
   );
 }
 
-function ResidentHandover({ person, tasks, flags, incidents, advice, busyId, onSave, onAdvise }) {
+function ResidentHandover({ person, tasks, flags, incidents, notes, advice, busyId, onSave, onAdvise }) {
   return (
     <article className={sheet}>
       <h2 className={cardTitle}>{person.name}</h2>
@@ -586,7 +544,10 @@ function ResidentHandover({ person, tasks, flags, incidents, advice, busyId, onS
           <ActionHandover
             key={item.id}
             action={item}
-            source={sourceText(item, flags, incidents)}
+            flags={flags}
+            incidents={incidents}
+            notes={notes}
+            name={person.name}
             advice={advice[item.id] || ""}
             busyId={busyId}
             onAdvise={onAdvise}
@@ -598,48 +559,112 @@ function ResidentHandover({ person, tasks, flags, incidents, advice, busyId, onS
   );
 }
 
-function ActionHandover({ action, source, advice, busyId, onAdvise, onSave }) {
+function ActionHandover({ action, flags, incidents, notes, name, advice, busyId, onAdvise, onSave }) {
   const [text, setText] = useState(action.handover || "");
+  const [editing, setEditing] = useState(false);
+  const flag = (flags || []).find((entry) => entry.id === action.flagId);
+  const incident = (incidents || []).find((entry) => entry.id === action.incidentId);
+  const note = (notes || []).find((entry) => entry.id === flag?.noteId);
+  const noteText = String(note?.jot || "").trim();
+  const concern = flag
+    ? `Flag · ${labelFor(FLAG_KINDS, flag.kind)} · ${flag.title}`
+    : incident
+      ? `Incident · ${labelFor(INCIDENT_KINDS, incident.kind)} · ${withoutName(incident.summary, name)}`
+      : "";
+  const concernDetail = flag?.why || incident?.summary || "";
 
   useEffect(() => {
     setText(advice || action.handover || "");
+    setEditing(false);
   }, [action.id, action.handover, advice]);
 
   const saving = busyId === `handover-${action.id}`;
   const advising = busyId === `advice-${action.id}`;
   const dirty = text.trim() !== (action.handover || "").trim();
+  const handoverLines = text
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 
   return (
     <section className="rounded-xl border border-line bg-white px-3.5 py-3">
-      {source && <p className={`${kick} break-words`}>{source}</p>}
-      <ActionPoints points={actionPoints(action)} />
-      <div className={actions}>
-        <button type="button" className={ghost} disabled={advising} onClick={() => onAdvise(action.id)}>
-          <Spin on={advising} />
-          {advising ? "Generating…" : "Generate handover"}
-        </button>
+      <div className="grid gap-3">
+        <div>
+          <p className={kick}>Note</p>
+          <p className="mt-1 whitespace-pre-wrap leading-relaxed">{noteText || "No note is linked to this flag."}</p>
+        </div>
+        <div>
+          <p className={kick}>{incident && !flag ? "Incident" : "Flag"}</p>
+          {concern && <p className="mt-1 font-semibold break-words">{concern}</p>}
+          {concernDetail && <p className={`${meta} mt-1 break-words`}>{concernDetail}</p>}
+        </div>
+        <div>
+          <p className={kick}>Actions</p>
+          <ActionPoints points={actionPoints(action)} />
+        </div>
       </div>
-      <label className={fieldLabel} htmlFor={`handover-${action.id}`}>
-        Handover
-      </label>
-      <textarea
-        id={`handover-${action.id}`}
-        className={area}
-        placeholder="Advice for this resident."
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-      />
-      <div className={actions}>
-        <button
-          type="button"
-          className={btn}
-          disabled={!dirty || !text.trim() || saving}
-          onClick={() => onSave(action.id, text.trim())}
-        >
-          <Spin on={saving} />
-          Save
-        </button>
-      </div>
+      {!handoverLines.length && (
+        <div className="mt-3 flex justify-end">
+          <button type="button" className={ghost} disabled={advising} onClick={() => onAdvise(action.id)}>
+            <Spin on={advising} />
+            {advising ? "Generating…" : "Generate handover"}
+          </button>
+        </div>
+      )}
+      {handoverLines.length > 0 && (
+        <div className="mt-3">
+          <p className={kick}>Handover</p>
+          {editing ? (
+            <textarea
+              id={`handover-${action.id}`}
+              className={`${area} mt-2 min-h-0`}
+              rows={Math.max(handoverLines.length + 1, 6)}
+              aria-label="Handover"
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+            />
+          ) : (
+            <ActionPoints points={handoverLines} />
+          )}
+        </div>
+      )}
+      {handoverLines.length > 0 && (
+        <div className={actions}>
+          {!editing && (
+            <button type="button" className={ghost} onClick={() => setEditing(true)}>
+              Edit
+            </button>
+          )}
+          {editing && (
+            <button
+              type="button"
+              className={ghost}
+              onClick={() => {
+                setText(advice || action.handover || "");
+                setEditing(false);
+              }}
+            >
+              Cancel
+            </button>
+          )}
+          {dirty ? (
+            <button
+              type="button"
+              className={btn}
+              disabled={!text.trim() || saving}
+              onClick={() => {
+                onSave(action.id, text.trim());
+                setEditing(false);
+              }}
+            >
+              <Spin on={saving} />
+              Save
+            </button>
+          ) : (
+            <span className={tone("approved")}>Saved</span>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -714,7 +739,76 @@ function ActionPoints({ points }) {
   );
 }
 
-function ActionDraft({ item, source, note, busy, onSave }) {
+function ConcernActions({
+  flag,
+  incident,
+  note,
+  name,
+  draft,
+  saved,
+  busy,
+  saving,
+  onGenerate,
+  onSave,
+  onComplete,
+  completeBusy,
+}) {
+  const noteText = String(note?.jot || "").trim();
+  const concern = flag
+    ? `Flag · ${labelFor(FLAG_KINDS, flag.kind)} · ${flag.title}`
+    : `Incident · ${labelFor(INCIDENT_KINDS, incident.kind)} · ${withoutName(incident.summary, name)}`;
+  const detail = flag ? withoutName(flag.why, name) : "";
+  const written = Boolean(draft) || saved.length > 0;
+
+  return (
+    <section className="rounded-xl border border-line bg-white px-3.5 py-3">
+      <div className="grid gap-3">
+        <div>
+          <p className={kick}>Note</p>
+          <p className="mt-1 whitespace-pre-wrap leading-relaxed">{noteText || "No note is linked."}</p>
+        </div>
+        <div>
+          <p className={kick}>{flag ? "Flag" : "Incident"}</p>
+          <p className="mt-1 font-semibold break-words">{concern}</p>
+          {detail && <p className={`${meta} mt-1 break-words`}>{detail}</p>}
+        </div>
+      </div>
+      {!written && (
+        <div className="mt-3 flex justify-end">
+          <button type="button" className={ghost} disabled={busy} onClick={onGenerate}>
+            <Spin on={busy} />
+            {busy ? "Generating…" : "Generate actions"}
+          </button>
+        </div>
+      )}
+      {draft && (
+        <div className="mt-3">
+          <p className={kick}>Actions</p>
+          <ActionDraft item={draft} busy={saving} onSave={onSave} />
+        </div>
+      )}
+      {saved.map((item) => (
+        <div className="mt-3" key={item.id}>
+          <div className="flex items-start justify-between gap-3">
+            <p className={kick}>Actions</p>
+            <button
+              type="button"
+              className={`${item.status === "done" ? ghost : btn} shrink-0 whitespace-nowrap`}
+              disabled={completeBusy === item.id}
+              onClick={() => onComplete(item.id, item.status === "done" ? "open" : "done")}
+            >
+              <Spin on={completeBusy === item.id} />
+              {item.status === "done" ? "Done" : "Mark done"}
+            </button>
+          </div>
+          <ActionPoints points={actionPoints(item).map((point) => withoutName(point, name))} />
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function ActionDraft({ item, busy, onSave }) {
   const [editing, setEditing] = useState(false);
   const [draftPoints, setDraftPoints] = useState(actionPoints(item).join("\n"));
   const fieldId = item.flagId || item.incidentId;
@@ -730,9 +824,7 @@ function ActionDraft({ item, source, note, busy, onSave }) {
     .filter(Boolean);
 
   return (
-    <article className={`${record} min-w-0`}>
-      {note && <p className={`${meta} break-words`}>From the note · {note}</p>}
-      {source && <p className={`${kick} mt-1 break-words`}>{source}</p>}
+    <>
       {editing ? (
         <>
           <label className={fieldLabel} htmlFor={`action-points-${fieldId}`}>
@@ -779,7 +871,7 @@ function ActionDraft({ item, source, note, busy, onSave }) {
           Save
         </button>
       </div>
-    </article>
+    </>
   );
 }
 

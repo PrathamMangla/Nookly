@@ -224,9 +224,9 @@ class ActionIn(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     resident_id: str = Field(alias="residentId", min_length=1)
-    title: str = Field(min_length=1, max_length=200)
+    title: str = Field(min_length=1, max_length=240)
     assignee: str = Field(default="", max_length=80)
-    detail: str = Field(default="", max_length=500)
+    detail: str = Field(default="", max_length=2000)
     flag_id: str = Field(default="", alias="flagId", max_length=80)
     incident_id: str = Field(default="", alias="incidentId", max_length=80)
 

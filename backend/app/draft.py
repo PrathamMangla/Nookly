@@ -69,22 +69,22 @@ Rules:
 - This is advice. A person decides what to save.
 """
 
-CONCERN_HANDOVER_INSTRUCTIONS = """You advise on one concern for one resident.
+CONCERN_HANDOVER_INSTRUCTIONS = """You write the handover for one resident from their note, this flag or incident, and the actions already chosen.
+
+points is 5 things to do with that person. Each point is one or two sentences. Use their first name. Start with Ask, Check, Offer, Help, Provide, or If.
+
+Shape:
+- Ask how the concern in the flag is today, using a fact from the note.
+- Check the daily difficulty written in the note.
+- Offer practical help with the activities the note says are hard, using the actions already chosen.
+- Provide time for rest when the note or the actions mention tiredness, low energy, or poor rest.
+- If it continues or gets worse, tell the shift lead and suggest a medical assessment. Do not diagnose and do not change medication.
 
 Rules:
-- points is exactly 3 short lines. Each line starts with a verb.
-- Use only the concern listed. Do not invent facts.
-- Stay on that concern. Do not add sleep, meals, appetite, hydration, diet, stress, or a journal unless that is the concern.
-- Do not mention a shift, a team, staff, a doctor, or a healthcare professional.
-- For a safeguarding concern only, one line may say to tell the shift lead what was seen. Do not decide what happened.
-- Do not diagnose, advise or change medication, or make a safeguarding decision.
-- Do not write the resident's name. Do not retell the flag. Do not say "there is a flag".
+- Use the note, this flag, and these actions. Do not add meals, fluids, or sleep unless the note, the flag, or the actions mention them.
+- Do not repeat the flag title as the whole point.
+- For a safeguarding concern, the points are to tell the shift lead what was seen. Do not decide what happened.
 - This is advice. A person decides what to save.
-
-Worsening fatigue:
-- Stay with the usual routine
-- Note where the tiredness gets in the way
-- Offer a rest when they are tired
 """
 
 HANDOVER_POINTS_FORMAT = {
@@ -98,8 +98,8 @@ HANDOVER_POINTS_FORMAT = {
             "properties": {
                 "points": {
                     "type": "array",
-                    "minItems": 3,
-                    "maxItems": 3,
+                    "minItems": 5,
+                    "maxItems": 5,
                     "items": {"type": "string"},
                 }
             },
@@ -108,36 +108,22 @@ HANDOVER_POINTS_FORMAT = {
     },
 }
 
-_STAFF_WORDS = ("shift lead", "staff", "team", "healthcare", "doctor", "nurse", "professional", "carer")
-_OTHER_CONCERNS = {
-    "health": ("sleep", "meal", "appetite", "hydrat", "diet", "lunch", "breakfast", "journal", "stress", "relax"),
-    "sleep": ("meal", "appetite", "hydrat", "diet", "lunch", "fatigue", "tired"),
-    "nutrition": ("sleep", "fatigue", "tired", "hydrat", "fall"),
-    "falls": ("meal", "sleep", "appetite", "fatigue", "tired"),
-}
+ACTION_INSTRUCTIONS = """You write what a carer should do with one resident.
 
-ACTION_INSTRUCTIONS = """You advise on each flag or incident selected for that resident.
-
-Each flag or incident gets its own short list of points. A point is advice for the resident. It starts with a verb. It is something that would help them. It is not a restatement of the flag.
+Each selected flag or incident gets its own list of actions. An action says what to do, with this person, about this concern. It is a real step, not a vague reminder.
 
 Rules:
 - One list for every flag and every incident. Copy originKind and originId exactly.
-- Use only that flag or incident. Do not invent facts, times, injuries, or events.
-- points is 3 separate actions. Each point is one short line, starting with a verb. Do not start with "Review".
-- Do not write a title or a paragraph. Only the points.
-- For a flag, pick the practical checks or support that follow from what was seen.
-  Worsening fatigue: "Stay with the usual routine" / "Note where the tiredness gets in the way" / "Offer a rest when they are tired"
-  Disturbed sleep: "Offer a quieter settle tonight" / "Note whether sleep is still broken" / "Keep the late evening calm"
-  Reduced appetite: "Sit with the next meal" / "Note how much is eaten" / "Offer the meal again later if it is left"
-  A fall or unsteadiness: "Stay close on the next transfer" / "Note how steady they are when they stand" / "Keep the walk to the chair unhurried"
-- For an incident, pick the follow-up from what was logged.
-  A sudden headache and a rest: "Check in after the rest" / "Ask how the headache is now" / "Note if it returns"
-- For a safeguarding concern, the points are to tell the shift lead what was seen. Do not decide what happened.
-- Do not diagnose. Do not advise or change medication. Do not say risk, score, predict, or likely.
-- Do not say "there is a flag" or "there was an incident".
-- Do not write the resident's name. The action is already shown under that person.
-- Do not name a room or assign the action to a person.
-- This is advice. A person chooses what to keep.
+- points is 5 actions. Each one is one or two sentences.
+- Start each action with Ask, Offer, Help, Sit, Break, Check, or Keep.
+- Use the person's first name.
+- Use the flag title, the why, and the care note. If the note says stress, a hard routine, poor rest, low energy, or trouble with daily activities, the actions can use those facts when they belong to this flag.
+- Say the practical step. Ask when it is worst. Offer a short rest. Help split the routine into smaller steps. Check how the activities went.
+- Do not write "Note whether it is still the case", "Offer a pause when it shows up", or "Write down when it gets in the way".
+- Do not invent screens, a diagnosis, or a change of medication.
+- For a safeguarding concern, the actions are to tell the shift lead what was seen. Do not decide what happened.
+- Do not say risk, score, predict, or likely.
+- This is advice. A person chooses what to save.
 """
 
 ACTION_FORMAT = {
@@ -159,8 +145,8 @@ ACTION_FORMAT = {
                             "originId": {"type": "string"},
                             "points": {
                                 "type": "array",
-                                "minItems": 3,
-                                "maxItems": 3,
+                                "minItems": 5,
+                                "maxItems": 5,
                                 "items": {"type": "string"},
                             },
                         },
@@ -421,56 +407,49 @@ def draft_shift_handover(
 
 
 def draft_concern_handover(
+    resident: dict,
     flags: list[dict],
     incidents: list[dict],
+    notes: list[dict] | None = None,
     action: dict | None = None,
 ) -> str:
-    """Advise on one flag or one incident, without the rest of the care note."""
+    """Write what to do next from the note, this flag or incident, and its actions."""
     sources = _care_sources(flags, incidents)
     if not sources:
         raise DraftError("A flag or an incident is needed before drafting the handover.", status=400)
+    name = (resident.get("name") or "They").strip()
+    first = name.split()[0]
     lines = [
-        "The person is already chosen. Do not write their name.",
-        "Write 3 points for this concern only:",
+        f"Resident: {name}. Use the first name {first}.",
+        "Write 5 handover steps from the note, this flag, and the actions.",
+        f"Note: {_note_text(resident, _notes_by_resident(notes).get(resident['id'], []))}",
     ]
     for source in sources:
-        lines.append(f"- {source['kind']} ({source['label']}): {source['text']}")
+        lines.append(f"Flag or incident: {source['kind']} ({source['label']}) {source['text']}")
     chosen = ""
     if action:
         chosen = (action.get("detail") or action.get("title") or "").strip()
     if chosen:
-        lines.append("The action already saved for this concern:")
+        lines.append("Actions already chosen:")
         lines.append(chosen)
-        lines.append("Keep the handover on that same concern.")
     raw = _complete(CONCERN_HANDOVER_INSTRUCTIONS, "\n".join(lines), HANDOVER_POINTS_FORMAT)
-    text = _keep_concern_points(raw, sources)
+    text = _keep_concern_points(raw)
     if not text:
-        raise DraftError("OpenAI did not stay on that concern.", status=400)
+        raise DraftError("OpenAI did not return a handover.", status=400)
     return text[:4000]
 
 
-def _keep_concern_points(raw: str, sources: list[dict]) -> str:
+def _keep_concern_points(raw: str) -> str:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise DraftError("OpenAI did not return a handover.") from exc
-    labels = {source.get("label", "") for source in sources}
-    safeguarding = "safeguarding" in labels
-    banned = set()
-    for label in labels:
-        banned.update(_OTHER_CONCERNS.get(label, ()))
     points = []
     for raw_point in data.get("points") or []:
         point = " ".join(str(raw_point).split()).strip(" -•\t")
-        low = point.lower()
-        if not point:
-            continue
-        if not safeguarding and any(word in low for word in _STAFF_WORDS):
-            continue
-        if any(word in low for word in banned):
-            continue
-        points.append(point[:160])
-        if len(points) == 3:
+        if point:
+            points.append(point[:280])
+        if len(points) == 5:
             break
     return "\n".join(points)
 
@@ -499,21 +478,128 @@ def draft_resident_actions(
     incidents: list[dict],
     notes: list[dict] | None = None,
 ) -> list[dict]:
-    """Ask OpenAI for one action per flag and incident."""
+    """Ask OpenAI for concrete actions from each flag or incident and the care note."""
     sources = _care_sources(flags, incidents)
     if not sources:
         raise DraftError("A flag or an incident is needed before drafting actions.", status=400)
-    brief = _resident_brief(resident, flags, incidents, notes).split("\n", 1)[-1]
-    raw = _complete(
-        ACTION_INSTRUCTIONS,
-        "The person is already chosen. Do not write their name.\n" + brief,
-        ACTION_FORMAT,
+    brief = _action_brief(resident, sources, notes)
+    raw = _complete(ACTION_INSTRUCTIONS, brief, ACTION_FORMAT)
+    drafted = _read_actions(raw, sources)
+    if not _actions_are_concrete(drafted, sources):
+        raw = _complete(
+            ACTION_INSTRUCTIONS,
+            brief + "\nWrite the actual step to take with this person. Do not repeat the flag title as the action.",
+            ACTION_FORMAT,
+        )
+        drafted = _read_actions(raw, sources)
+    drafted = _keep_concrete(drafted, sources)
+    if not drafted:
+        raise DraftError("OpenAI did not find an action for those flags or incidents.", status=400)
+    return drafted
+
+
+def _care_sources(flags: list[dict], incidents: list[dict]) -> list[dict]:
+    sources = []
+    for flag in flags:
+        title = " ".join(str(flag.get("title", "")).split()).strip()
+        why = " ".join(str(flag.get("why", "")).split()).strip()
+        quote = " ".join(str(flag.get("source_quote", "")).split()).strip()
+        parts = [title]
+        if why and why.lower() not in title.lower():
+            parts.append(f"Why: {why}")
+        if quote and quote.lower() not in why.lower() and quote.lower() not in title.lower():
+            parts.append(f"From the note: {quote}")
+        sources.append(
+            {
+                "kind": "flag",
+                "id": flag["id"],
+                "label": flag.get("kind", "flag"),
+                "title": title,
+                "text": ". ".join(part for part in parts if part),
+            }
+        )
+    for incident in incidents:
+        if incident.get("status") == "closed":
+            continue
+        summary = " ".join(str(incident.get("summary", "")).split()).strip()
+        sources.append(
+            {
+                "kind": "incident",
+                "id": incident["id"],
+                "label": incident.get("kind", "incident"),
+                "title": summary,
+                "text": summary,
+            }
+        )
+    return sources
+
+
+def _action_brief(resident: dict, sources: list[dict], notes: list[dict] | None) -> str:
+    name = (resident.get("name") or "They").strip()
+    first = name.split()[0]
+    lines = [
+        f"Resident: {name}. Use the first name {first}.",
+        "Write 5 actions for each item. Say what to do with this person.",
+        f"Care note: {_note_text(resident, _notes_by_resident(notes).get(resident['id'], []))}",
+    ]
+    for source in sources:
+        lines.append(f"- {source['kind']} {source['id']} ({source['label']})")
+        lines.append(f"  Title: {source.get('title') or source['text']}")
+        if source.get("text") and source.get("text") != source.get("title"):
+            lines.append(f"  Detail: {source['text']}")
+    return "\n".join(lines)
+
+
+_VAGUE_ACTION = re.compile(
+    r"^(note whether .+ is still the case|offer a pause when .+ shows up|write down when .+ gets in the way|note how .+ is today)\.?$",
+    re.I,
+)
+
+
+def _title_words(title: str) -> list[str]:
+    skip = {"with", "that", "this", "from", "they", "them", "their", "have", "been", "over", "past"}
+    return [word for word in re.findall(r"[a-z]{4,}", title.lower()) if word not in skip]
+
+
+def _concrete(points: list[str], title: str) -> bool:
+    if len(points) < 4:
+        return False
+    if sum(1 for point in points if _VAGUE_ACTION.match(point)) >= 2:
+        return False
+    if any(len(point.split()) < 8 for point in points):
+        return False
+    words = _title_words(title)
+    if words and not any(word in " ".join(points).lower() for word in words):
+        return False
+    return True
+
+
+def _actions_are_concrete(drafted: list[dict], sources: list[dict]) -> bool:
+    by_id = {item["flag_id"] or item["incident_id"]: item for item in drafted}
+    return all(
+        _concrete((by_id.get(source["id"]) or {}).get("points") or [], source.get("title") or "")
+        for source in sources
     )
+
+
+def _keep_concrete(drafted: list[dict], sources: list[dict]) -> list[dict]:
+    by_id = {item["flag_id"] or item["incident_id"]: item for item in drafted}
+    kept = []
+    for source in sources:
+        item = by_id.get(source["id"])
+        if not item:
+            continue
+        kept.append(item)
+        if len(kept) == 8:
+            break
+    return kept
+
+
+def _read_actions(raw: str, sources: list[dict]) -> list[dict]:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise DraftError("OpenAI did not return actions.") from exc
-
     allowed = {item["id"]: item["kind"] for item in sources}
     seen = set()
     drafted = []
@@ -524,18 +610,16 @@ def draft_resident_actions(
         for raw_point in item.get("points") or []:
             point = " ".join(str(raw_point).split()).strip(" -•\t")
             if point:
-                points.append(point[:160])
-        points = points[:3]
-        if origin_id in seen or allowed.get(origin_id) != origin_kind:
-            continue
-        if not points:
+                points.append(point[:280])
+        points = points[:5]
+        if origin_id in seen or allowed.get(origin_id) != origin_kind or len(points) < 4:
             continue
         seen.add(origin_id)
         drafted.append(
             {
-                "title": points[0],
+                "title": points[0][:240],
                 "assignee": "",
-                "detail": "\n".join(points)[:500],
+                "detail": "\n".join(points)[:2000],
                 "points": points,
                 "flag_id": origin_id if origin_kind == "flag" else "",
                 "incident_id": origin_id if origin_kind == "incident" else "",
@@ -543,34 +627,7 @@ def draft_resident_actions(
         )
         if len(drafted) == 8:
             break
-    if not drafted:
-        raise DraftError("OpenAI did not find an action for those flags or incidents.", status=400)
     return drafted
-
-
-def _care_sources(flags: list[dict], incidents: list[dict]) -> list[dict]:
-    sources = []
-    for flag in flags:
-        sources.append(
-            {
-                "kind": "flag",
-                "id": flag["id"],
-                "label": flag.get("kind", "flag"),
-                "text": f"{flag.get('title', '')}. {flag.get('why', '')}".strip(),
-            }
-        )
-    for incident in incidents:
-        if incident.get("status") == "closed":
-            continue
-        sources.append(
-            {
-                "kind": "incident",
-                "id": incident["id"],
-                "label": incident.get("kind", "incident"),
-                "text": incident.get("summary", ""),
-            }
-        )
-    return sources
 
 
 def _notes_by_resident(notes: list[dict] | None) -> dict[str, list[str]]:

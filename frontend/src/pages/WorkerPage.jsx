@@ -7,7 +7,6 @@ import {
   INCIDENT_KINDS,
   labelFor,
   residentNotes,
-  sourceText,
 } from "../care.js";
 import { DeskIntro, Stats, Status, Tabs } from "../components/DashBits.jsx";
 import { Spin } from "../components/Spinner.jsx";
@@ -60,6 +59,7 @@ export default function WorkerPage() {
     draft,
     logIncident,
     addResident,
+    completeAction,
   } = useOutletContext();
   const [tab, setTab] = useState("notes");
   const [selected, setSelected] = useState("");
@@ -179,59 +179,61 @@ export default function WorkerPage() {
           )}
           {tab === "actions" && (
             <section className={noteDesk}>
-              {residents.length === 0 && <p className={settled}>No residents yet.</p>}
-              {residents.map((item) => {
-                const mine = byStatus(shiftActions.filter((action) => action.residentId === item.id));
-                return (
-                  <article className={sheet} key={item.id}>
-                    <h2 className={cardTitle}>{item.name}</h2>
-                    {mine.length === 0 ? (
-                      <p className="mt-3 leading-relaxed">No actions yet for this resident.</p>
-                    ) : (
-                      <ul className="mt-3 grid gap-3">
-                        {mine.map((action) => (
-                          <li key={action.id}>
-                            <p className="font-semibold">{action.title}</p>
-                            {action.detail && <p className="mt-1 leading-relaxed">{action.detail}</p>}
-                            {sourceText(action, flags, incidents) && (
-                              <p className={`${meta} mt-1`}>{sourceText(action, flags, incidents)}</p>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </article>
-                );
-              })}
-            </section>
-          )}
-          {tab === "handover" && (
-            <section className={noteDesk}>
-              {residents.length === 0 && <p className={settled}>No residents yet.</p>}
-              {residents.map((item) => {
-                const saved = (shiftActions || []).filter(
-                  (action) => action.residentId === item.id && String(action.handover || "").trim(),
-                );
-                return (
-                <article className={sheet} key={item.id}>
-                  <h2 className={cardTitle}>{item.name}</h2>
-                  {saved.length === 0 ? (
-                    <p className="mt-3 leading-relaxed">No handover yet for this resident.</p>
+              <NameTabs residents={residents} person={person} onSelect={setSelected} />
+              {!person ? (
+                <p className={settled}>No residents yet.</p>
+              ) : (
+                <article className={sheet}>
+                  {byStatus(shiftActions.filter((action) => action.residentId === person.id)).length === 0 ? (
+                    <p className="leading-relaxed">No actions yet for this resident.</p>
                   ) : (
-                    <div className="mt-3 grid gap-3">
-                      {saved.map((action) => (
-                        <section key={action.id}>
-                          {sourceText(action, flags, incidents) && (
-                            <p className={meta}>{sourceText(action, flags, incidents)}</p>
-                          )}
-                          <p className="mt-1 whitespace-pre-wrap leading-relaxed">{action.handover}</p>
-                        </section>
+                    <div className="grid gap-3">
+                      {byStatus(shiftActions.filter((action) => action.residentId === person.id)).map((action) => (
+                        <CareCard
+                          key={action.id}
+                          action={action}
+                          flags={flags}
+                          incidents={incidents}
+                          notes={notes}
+                          busyId={busyId}
+                          onComplete={completeAction}
+                        />
                       ))}
                     </div>
                   )}
                 </article>
-                );
-              })}
+              )}
+            </section>
+          )}
+          {tab === "handover" && (
+            <section className={noteDesk}>
+              <NameTabs residents={residents} person={person} onSelect={setSelected} />
+              {!person ? (
+                <p className={settled}>No residents yet.</p>
+              ) : (
+                <article className={sheet}>
+                  {(shiftActions || []).filter(
+                    (action) => action.residentId === person.id && String(action.handover || "").trim(),
+                  ).length === 0 ? (
+                    <p className="leading-relaxed">No handover yet for this resident.</p>
+                  ) : (
+                    <div className="grid gap-3">
+                      {(shiftActions || [])
+                        .filter((action) => action.residentId === person.id && String(action.handover || "").trim())
+                        .map((action) => (
+                          <CareCard
+                            key={action.id}
+                            action={action}
+                            flags={flags}
+                            incidents={incidents}
+                            notes={notes}
+                            handover
+                          />
+                        ))}
+                    </div>
+                  )}
+                </article>
+              )}
             </section>
           )}
           {tab === "incidents" && (
@@ -564,6 +566,103 @@ function LoggedNote({ note, number, flags, busyId, onSend }) {
 
 function flagCount(count) {
   return count === 1 ? "1 flag" : `${count} flags`;
+}
+
+function NameTabs({ residents, person, onSelect }) {
+  if (!residents?.length) return null;
+  return (
+    <div>
+      <p className={fieldLabel}>Name</p>
+      <div className="flex flex-wrap gap-2">
+        {residents.map((item) => {
+          const chosen = item.id === person?.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              aria-pressed={chosen}
+              className={chosen ? btn : ghost}
+              onClick={() => onSelect(item.id)}
+            >
+              {item.name}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CareCard({ action, flags, incidents, notes, handover = false, busyId, onComplete }) {
+  const flag = (flags || []).find((entry) => entry.id === action.flagId);
+  const incident = (incidents || []).find((entry) => entry.id === action.incidentId);
+  const note = (notes || []).find((entry) => entry.id === flag?.noteId);
+  const noteText = String(note?.jot || "").trim();
+  const concern = flag
+    ? `Flag · ${labelFor(FLAG_KINDS, flag.kind)} · ${flag.title}`
+    : incident
+      ? `Incident · ${labelFor(INCIDENT_KINDS, incident.kind)} · ${incident.summary}`
+      : "";
+  const detail = flag?.why || "";
+
+  return (
+    <section className="rounded-xl border border-line bg-white px-3.5 py-3">
+      <div className="grid gap-3">
+        <div>
+          <p className={kick}>Note</p>
+          <p className="mt-1 whitespace-pre-wrap leading-relaxed">{noteText || "No note is linked."}</p>
+        </div>
+        <div>
+          <p className={kick}>{incident && !flag ? "Incident" : "Flag"}</p>
+          {concern && <p className="mt-1 font-semibold break-words">{concern}</p>}
+          {detail && <p className={`${meta} mt-1 break-words`}>{detail}</p>}
+        </div>
+        <div>
+          <div className="flex items-start justify-between gap-3">
+            <p className={kick}>Actions</p>
+            {onComplete && (
+              <button
+                type="button"
+                className={`${action.status === "done" ? ghost : btn} shrink-0 whitespace-nowrap`}
+                disabled={busyId === action.id}
+                onClick={() => onComplete(action.id, action.status === "done" ? "open" : "done")}
+              >
+                <Spin on={busyId === action.id} />
+                {action.status === "done" ? "Done" : "Mark done"}
+              </button>
+            )}
+          </div>
+          <ActionLines item={action} />
+        </div>
+        {handover && (
+          <div>
+            <p className={kick}>Handover</p>
+            <ActionLines item={{ detail: action.handover, title: "" }} />
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ActionLines({ item }) {
+  const lines = String(item.detail || "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const title = String(item.title || "").trim();
+  const shown = lines.length ? lines : [title].filter(Boolean);
+  if (!shown.length) return null;
+  return (
+    <ul className="mt-2 grid gap-1.5">
+      {shown.map((line) => (
+        <li key={line} className="flex gap-2.5 break-words leading-relaxed">
+          <span className="mt-[0.55rem] size-1.5 shrink-0 rounded-full bg-teal" aria-hidden="true" />
+          <span>{line}</span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function PersonFlags({ flags, onSource }) {
