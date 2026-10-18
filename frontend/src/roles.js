@@ -37,7 +37,7 @@ export const ROLES = [
     role: "shift_lead",
     label: "Shift lead",
     name: "Hannah Brooks",
-    scope: "Reviews flags, assigns actions, approves notes, and publishes the handover.",
+    scope: "Approves flags, incidents, and notes. Advice helps with actions and the handover.",
     path: "/dashboards/shift-lead",
   },
   {
@@ -45,7 +45,7 @@ export const ROLES = [
     role: "manager",
     label: "Manager",
     name: "Daniel Adeyemi",
-    scope: "Open actions, notes, flags, and incidents for this shift.",
+    scope: "Open actions, notes, flags, and incidents.",
     path: "/dashboards/manager",
   },
   {
@@ -69,7 +69,7 @@ export const ACCESS = [
   {
     id: "shift-lead",
     label: "Shift lead",
-    line: "The shift, not the user list.",
+    line: "The residents, not the user list.",
     can: ["Explainable concern flags", "Communication book actions", "Approve notes and publish the handover"],
     cannot: ["Diagnose, advise medication, or decide safeguarding", "Change roles"],
   },
@@ -77,7 +77,7 @@ export const ACCESS = [
     id: "manager",
     label: "Manager",
     line: "Oversight of the service.",
-    can: ["Incidents and how they are tracking", "Shift counts", "Service settings"],
+    can: ["Incidents and how they are tracking", "Resident counts", "Service settings"],
     cannot: ["Edit a care note", "Manage logins"],
   },
   {

@@ -43,7 +43,23 @@ class FlagOut(BaseModel):
     title: str
     why: str
     source_quote: str = Field(default="", serialization_alias="sourceQuote")
+    note_id: str = Field(default="", serialization_alias="noteId")
     status: str
+
+
+class NoteOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    resident_id: str = Field(serialization_alias="residentId")
+    resident_name: str = Field(serialization_alias="residentName")
+    room: str
+    jot: str
+    day_note: str = Field(serialization_alias="dayNote")
+    points: list[str] = []
+    sent: bool
+    approved: bool
+    when_label: str = Field(serialization_alias="when")
 
 
 class IncidentOut(BaseModel):
@@ -74,6 +90,7 @@ class ActionOut(BaseModel):
     source: str = "manual"
     flag_id: str = Field(default="", serialization_alias="flagId")
     incident_id: str = Field(default="", serialization_alias="incidentId")
+    handover: str = ""
 
 
 class AuditOut(BaseModel):
@@ -106,6 +123,7 @@ class ShiftOut(BaseModel):
 
 class DeskOut(BaseModel):
     residents: list[ResidentOut]
+    notes: list[NoteOut]
     users: list[UserOut]
     flags: list[FlagOut]
     incidents: list[IncidentOut]
@@ -168,18 +186,6 @@ class PointsIn(BaseModel):
     points: list[str] = Field(min_length=1, max_length=12)
 
 
-class DraftOut(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    jot: str
-    day_note: str = Field(serialization_alias="dayNote")
-    points: list[str] = []
-    source: str
-    sent: bool
-    approved: bool
-
-
 class SendIn(BaseModel):
     sent: bool = True
 
@@ -208,6 +214,12 @@ class FlagUpdate(BaseModel):
     status: str = Field(pattern="^(open|reviewed)$")
 
 
+class FlagEdit(BaseModel):
+    kind: str = Field(pattern="^(falls|health|safeguarding|sleep|nutrition)$")
+    title: str = Field(min_length=1, max_length=180)
+    why: str = Field(min_length=1, max_length=800)
+
+
 class ActionIn(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -221,6 +233,31 @@ class ActionIn(BaseModel):
 
 class ActionUpdate(BaseModel):
     status: str = Field(pattern="^(open|done)$")
+
+
+class ActionAdviceIn(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    flag_ids: list[str] = Field(default_factory=list, alias="flagIds", max_length=8)
+    incident_ids: list[str] = Field(default_factory=list, alias="incidentIds", max_length=8)
+
+
+class ActionAdviceItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    title: str
+    detail: str
+    points: list[str] = Field(default_factory=list)
+    flag_id: str = Field(default="", serialization_alias="flagId")
+    incident_id: str = Field(default="", serialization_alias="incidentId")
+
+
+class ActionAdviceOut(BaseModel):
+    actions: list[ActionAdviceItem]
+
+
+class HandoverAdviceOut(BaseModel):
+    advice: str
 
 
 class ShiftUpdate(BaseModel):

@@ -1,9 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { byStatus, carePoints, FLAG_KINDS, INCIDENT_KINDS, labelFor, residentSources, sourceText } from "../care.js";
+import {
+  byStatus,
+  carePoints,
+  FLAG_KINDS,
+  INCIDENT_KINDS,
+  labelFor,
+  residentNotes,
+  sourceText,
+} from "../care.js";
 import { DeskIntro, Stats, Status, Tabs } from "../components/DashBits.jsx";
 import { Spin } from "../components/Spinner.jsx";
-import Timeline from "../components/Timeline.jsx";
 import { ROLES } from "../roles.js";
 import {
   actions,
@@ -22,31 +29,27 @@ import {
   noteDesk,
   point,
   points,
-  prose,
-  record,
-  recordHead,
-  recordTitle,
   sectionLabel,
   settled,
   sheet,
   sheetHead,
   sourceLink,
   sourceQuote,
-  tag,
   tone,
 } from "../ui.js";
 
 const role = ROLES[0];
 const TABS = [
   { id: "notes", label: "Notes" },
-  { id: "timeline", label: "Timeline" },
-  { id: "handover", label: "Handover" },
   { id: "incidents", label: "Incidents" },
+  { id: "actions", label: "Actions" },
+  { id: "handover", label: "Handovers" },
 ];
 
 export default function WorkerPage() {
   const {
     residents,
+    notes,
     flags,
     incidents,
     actions: shiftActions,
@@ -67,18 +70,17 @@ export default function WorkerPage() {
     residents?.find((item) => !item.sent) ||
     residents?.[0];
   const [jot, setJot] = useState("");
-  const [quote, setQuote] = useState("");
   const [adding, setAdding] = useState(false);
-  const noteRef = useRef(null);
 
   useEffect(() => {
-    if (person) setJot(person.jot);
-    setQuote("");
-  }, [person?.id, person?.jot]);
+    setJot("");
+  }, [person?.id]);
 
-  const ready = Boolean(residents && incidents && shiftActions && shift);
+  const ready = Boolean(residents && notes && incidents && shiftActions && shift);
   const openActions = shiftActions?.filter((item) => item.status === "open") || [];
   const openIncidents = incidents?.filter((item) => item.status !== "closed") || [];
+  const personNotes = person ? residentNotes(person.id, notes) : [];
+  const personIncidents = person ? incidents?.filter((item) => item.residentId === person.id) || [] : [];
 
   return (
     <>
@@ -89,7 +91,7 @@ export default function WorkerPage() {
           <Stats
             items={[
               { label: "Assigned", value: residents.length },
-              { label: "Notes to send", value: residents.filter((item) => item.dayNote.trim() && !item.sent).length },
+              { label: "Notes to send", value: notes.filter((item) => item.dayNote.trim() && !item.sent).length },
               { label: "Open actions", value: openActions.length },
               { label: "Incidents open", value: openIncidents.length },
             ]}
@@ -97,47 +99,18 @@ export default function WorkerPage() {
           <Tabs tabs={TABS} current={tab} onChange={setTab} label="Support worker" />
           {tab === "notes" && (
             <div className={noteDesk}>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] items-stretch gap-2.5">
-                {residents.length > 0 && (
-                  <ul className="contents">
-                    {residents.map((item) => {
-                      const kindName = statusKind(item);
-                      const pressed = person?.id === item.id;
-                      return (
-                        <li key={item.id} className="min-w-0">
-                          <button
-                            type="button"
-                            aria-pressed={pressed}
-                            className="group grid h-full min-h-[120px] w-full grid-cols-[40px_minmax(0,1fr)] items-center gap-x-3 gap-y-2 rounded-xl border border-line bg-white px-4 py-3.5 text-left aria-pressed:border-[#b7e0de] aria-pressed:bg-mint"
-                            onClick={() => setSelected(item.id)}
-                          >
-                            <PersonIcon pressed={pressed} />
-                            <span className="col-start-2 row-start-1 min-w-0">
-                              <strong className="block truncate font-semibold tracking-[-0.02em]">{item.name}</strong>
-                            </span>
-                            <em className={`${tone(kindName, pressed)} col-start-2 row-start-2 justify-self-start`}>
-                              <StatusIcon kind={kindName} />
-                              {statusLabel(item)}
-                            </em>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-                <button
-                  type="button"
-                  className="flex h-full min-h-[120px] items-center justify-center gap-2 rounded-xl border border-dashed border-[rgba(16,32,51,0.22)] bg-white px-4 py-3.5 font-semibold text-deep"
-                  aria-expanded={adding || residents.length === 0}
-                  onClick={() => setAdding((open) => !open)}
-                >
-                  <PlusIcon />
-                  {adding || residents.length === 0 ? "Close" : "Add a resident"}
-                </button>
-              </div>
+              <ResidentPicker
+                residents={residents}
+                notes={notes}
+                person={person}
+                adding={adding}
+                onSelect={setSelected}
+                onToggleAdd={() => setAdding((open) => !open)}
+              />
               {(adding || residents.length === 0) && (
                 <AddPerson
                   busyId={busyId}
+                  onCancel={residents.length ? () => setAdding(false) : undefined}
                   onAdd={async (body) => {
                     const saved = await addResident(body);
                     if (saved) {
@@ -155,221 +128,222 @@ export default function WorkerPage() {
                       <h2 className={cardTitle}>{person.name}</h2>
                       <p className="text-soft">Age {person.age}</p>
                     </div>
-                    <span className={tone(statusKind(person))}>
-                      <StatusIcon kind={statusKind(person)} />
-                      {statusLabel(person)}
+                    <span className={tone(statusKind(person, notes))}>
+                      <StatusIcon kind={statusKind(person, notes)} />
+                      {statusLabel(person, notes)}
                     </span>
                   </header>
                   <label className={labelClass} htmlFor="jot">
-                    Your note
+                    {personNotes.length ? "Another note" : "Your note"}
                   </label>
                   <textarea
                     id="jot"
-                    ref={noteRef}
                     className={`${area} min-h-[168px] leading-[1.55]`}
-                    placeholder="Write what happened, in your own words."
+                    placeholder="Write what happened, in your own words. You can log more than one note."
                     value={jot}
                     onChange={(event) => setJot(event.target.value)}
                   />
                   <div className={actions}>
                     <button
                       type="button"
-                      className={carePoints(person).length ? ghost : btn}
+                      className={btn}
                       disabled={!jot.trim() || busyId === `draft-${person.id}`}
-                      onClick={() => draft(person.id, jot.trim())}
+                      onClick={async () => {
+                        const saved = await draft(person.id, jot.trim());
+                        if (saved) setJot("");
+                      }}
                     >
                       <Spin on={busyId === `draft-${person.id}`} />
                       {busyId === `draft-${person.id}` ? "Reading the note…" : "Find care points"}
                     </button>
-                    {person.sent ? (
-                      <button
-                        type="button"
-                        className={ghost}
-                        disabled={busyId === person.id}
-                        onClick={() => send(person.id, false)}
-                      >
-                        <Spin on={busyId === person.id} />
-                        Sent · take back
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className={btn}
-                        disabled={
-                          busyId === person.id || busyId === `draft-${person.id}` || !person.dayNote.trim()
-                        }
-                        onClick={() => send(person.id, true)}
-                      >
-                        <Spin on={busyId === person.id} />
-                        Send for approval
-                      </button>
-                    )}
-                  </div>
-                  <div className={findings}>
-                    <section className={finding}>
-                      <h3 className={findingTitle}>Care notes</h3>
-                      {carePoints(person).length === 0 ? (
-                        <p className={emptyLine}>Found in the note you write.</p>
-                      ) : (
-                        <ul className={points}>
-                          {carePoints(person).map((line) => (
-                            <li className={point} key={line}>
-                              {line}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </section>
-                    <section className={finding}>
-                      <h3 className={findingTitle}>Suggested flags</h3>
-                      <PersonFlags
-                        flags={(flags || []).filter((flag) => flag.residentId === person.id)}
-                        onSource={(source) => showSource(noteRef.current, source, setQuote)}
-                      />
-                      {quote && <p className={sourceQuote}>In the note: “{quote}”</p>}
-                    </section>
                   </div>
                 </article>
               ) : (
-                <p className={settled}>Add someone, then write what happened on the shift.</p>
+                <p className={settled}>Add someone, then write what happened.</p>
               )}
+              {person && personNotes.length === 0 && (
+                <p className={settled}>No notes for {person.name} yet. Write one above, then log another whenever you need to.</p>
+              )}
+              {person &&
+                personNotes.map((note, index) => (
+                  <LoggedNote
+                    key={note.id}
+                    number={personNotes.length - index}
+                    note={note}
+                    flags={(flags || []).filter((flag) => flag.noteId === note.id)}
+                    busyId={busyId}
+                    onSend={send}
+                  />
+                ))}
             </div>
           )}
-          {tab === "timeline" && <Timeline residents={residents} flags={flags || []} actions={shiftActions} />}
-          {tab === "handover" && (
+          {tab === "actions" && (
             <section className={noteDesk}>
-              {residents.length === 0 && <p className={settled}>No residents on this shift yet.</p>}
-              {residents.map((person) => {
-                const sources = residentSources(person.id, flags, incidents);
+              {residents.length === 0 && <p className={settled}>No residents yet.</p>}
+              {residents.map((item) => {
+                const mine = byStatus(shiftActions.filter((action) => action.residentId === item.id));
                 return (
-                  <article className={sheet} key={person.id}>
-                    <h2 className={cardTitle}>{person.name}</h2>
-                    <ul className="mt-3 grid gap-2">
-                      {sources.flags.map((flag) => (
-                        <li className="rounded-xl border border-line bg-white px-3.5 py-2.5" key={flag.id}>
-                          <p className={kick}>Flag · {labelFor(FLAG_KINDS, flag.kind)}</p>
-                          <p className="mt-1 font-semibold">{flag.title}</p>
-                        </li>
-                      ))}
-                      {sources.incidents.map((incident) => (
-                        <li className="rounded-xl border border-line bg-white px-3.5 py-2.5" key={incident.id}>
-                          <p className={kick}>Incident · {labelFor(INCIDENT_KINDS, incident.kind)}</p>
-                          <p className="mt-1">{incident.summary}</p>
-                        </li>
-                      ))}
-                    </ul>
-                    <p className={`${prose} mt-3`}>
-                      {person.handover.trim() || "The shift lead has not written this handover yet."}
-                    </p>
+                  <article className={sheet} key={item.id}>
+                    <h2 className={cardTitle}>{item.name}</h2>
+                    {mine.length === 0 ? (
+                      <p className="mt-3 leading-relaxed">No actions yet for this resident.</p>
+                    ) : (
+                      <ul className="mt-3 grid gap-3">
+                        {mine.map((action) => (
+                          <li key={action.id}>
+                            <p className="font-semibold">{action.title}</p>
+                            {action.detail && <p className="mt-1 leading-relaxed">{action.detail}</p>}
+                            {sourceText(action, flags, incidents) && (
+                              <p className={`${meta} mt-1`}>{sourceText(action, flags, incidents)}</p>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </article>
                 );
               })}
-              <h2 className={sectionLabel}>Communication book</h2>
-              {shiftActions.length === 0 && <p className={settled}>Nothing in the book for this shift.</p>}
-              {byStatus(shiftActions).map((item) => (
-                <article className={record} key={item.id}>
-                  <header className={recordHead}>
-                    <div>
-                      <h3 className={recordTitle}>{item.title}</h3>
-                      <p className={meta}>{item.residentName}</p>
-                      {sourceText(item, flags, incidents) && (
-                        <p className={`${meta} mt-1`}>{sourceText(item, flags, incidents)}</p>
-                      )}
-                    </div>
-                    <span className={tag(item.status !== "open")}>{item.status === "open" ? "Open" : "Done"}</span>
-                  </header>
-                  {item.detail && <p className="mt-2">{item.detail}</p>}
-                </article>
-              ))}
             </section>
           )}
-          {tab === "incidents" && !person && (
-            <p className={settled}>Add a resident on the Notes tab, then log what happened.</p>
+          {tab === "handover" && (
+            <section className={noteDesk}>
+              {residents.length === 0 && <p className={settled}>No residents yet.</p>}
+              {residents.map((item) => {
+                const saved = (shiftActions || []).filter(
+                  (action) => action.residentId === item.id && String(action.handover || "").trim(),
+                );
+                return (
+                <article className={sheet} key={item.id}>
+                  <h2 className={cardTitle}>{item.name}</h2>
+                  {saved.length === 0 ? (
+                    <p className="mt-3 leading-relaxed">No handover yet for this resident.</p>
+                  ) : (
+                    <div className="mt-3 grid gap-3">
+                      {saved.map((action) => (
+                        <section key={action.id}>
+                          {sourceText(action, flags, incidents) && (
+                            <p className={meta}>{sourceText(action, flags, incidents)}</p>
+                          )}
+                          <p className="mt-1 whitespace-pre-wrap leading-relaxed">{action.handover}</p>
+                        </section>
+                      ))}
+                    </div>
+                  )}
+                </article>
+                );
+              })}
+            </section>
           )}
-          {tab === "incidents" && person && (
-            <section className="grid items-start gap-[22px] lg:grid-cols-[1.25fr_0.75fr]">
-              <div>
-                <h2 className={sectionLabel}>Assigned residents</h2>
-                {incidents.length === 0 && <p className={settled}>No incidents logged.</p>}
-                {byStatus(incidents).map((item) => (
-                  <article className={`${record} mb-3`} key={item.id}>
-                    <header className={recordHead}>
+          {tab === "incidents" && (
+            <div className={noteDesk}>
+              <ResidentPicker
+                residents={residents}
+                notes={notes}
+                person={person}
+                adding={adding}
+                onSelect={setSelected}
+                onToggleAdd={() => setAdding((open) => !open)}
+              />
+              {(adding || residents.length === 0) && (
+                <AddPerson
+                  busyId={busyId}
+                  onCancel={residents.length ? () => setAdding(false) : undefined}
+                  onAdd={async (body) => {
+                    const saved = await addResident(body);
+                    if (saved) {
+                      setSelected(saved.id);
+                      setAdding(false);
+                    }
+                    return saved;
+                  }}
+                />
+              )}
+              {person ? (
+                <form
+                  className={sheet}
+                  key={person.id}
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    const saved = await logIncident(person.id, kind, summary.trim());
+                    if (saved) setSummary("");
+                  }}
+                >
+                  <header className={sheetHead}>
+                    <div>
+                      <h2 className={cardTitle}>{person.name}</h2>
+                      <p className="text-soft">Age {person.age}</p>
+                    </div>
+                    <span className={tone(personIncidents.length ? "ready" : "wait")}>
+                      {personIncidents.length ? `${personIncidents.length} logged` : "No incidents"}
+                    </span>
+                  </header>
+                  <label className={labelClass} htmlFor="incident-kind">
+                    Kind
+                  </label>
+                  <select
+                    id="incident-kind"
+                    className={field}
+                    value={kind}
+                    onChange={(event) => setKind(event.target.value)}
+                  >
+                    {INCIDENT_KINDS.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                  <label className={labelClass} htmlFor="incident-summary">
+                    {personIncidents.length ? "Another incident" : "Your incident"}
+                  </label>
+                  <textarea
+                    id="incident-summary"
+                    className={`${area} min-h-[168px] leading-[1.55]`}
+                    placeholder="Write what happened, in your own words. You can log more than one incident."
+                    value={summary}
+                    onChange={(event) => setSummary(event.target.value)}
+                  />
+                  <div className={actions}>
+                    <button
+                      type="submit"
+                      className={btn}
+                      disabled={!summary.trim() || busyId === `incident-${person.id}`}
+                    >
+                      <Spin on={busyId === `incident-${person.id}`} />
+                      Log incident
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <p className={settled}>Add someone, then write what happened.</p>
+              )}
+              {person && personIncidents.length === 0 && (
+                <p className={settled}>
+                  No incidents for {person.name} yet. Write one above, then log another whenever you need to.
+                </p>
+              )}
+              {person &&
+                byStatus(
+                  personIncidents.map((item, index) => ({
+                    ...item,
+                    number: personIncidents.length - index,
+                  })),
+                ).map((item) => (
+                  <article className={sheet} key={item.id}>
+                    <header className={sheetHead}>
                       <div>
-                        <p className={kick}>{labelFor(INCIDENT_KINDS, item.kind)}</p>
-                        <h3 className={recordTitle}>{item.residentName}</h3>
-                        <p className={meta}>
-                          {item.when} · {item.reportedBy}
+                        <h2 className={cardTitle}>Incident {item.number}</h2>
+                        <p className="text-soft">
+                          {labelFor(INCIDENT_KINDS, item.kind)} · {item.when}
                         </p>
                       </div>
-                      <span className={tag(item.status === "closed")}>
+                      <span className={tone(item.status === "closed" ? "approved" : "ready")}>
                         {item.status === "closed" ? "Closed" : item.status === "tracking" ? "Tracking" : "Open"}
                       </span>
                     </header>
-                    <p className="mt-2">{item.summary}</p>
+                    <p className="mt-3 whitespace-pre-wrap leading-relaxed">{item.summary}</p>
                   </article>
                 ))}
-              </div>
-              <form
-                className={sheet}
-                onSubmit={async (event) => {
-                  event.preventDefault();
-                  const saved = await logIncident(person.id, kind, summary.trim());
-                  if (saved) setSummary("");
-                }}
-              >
-                <h2 className={cardTitle}>Log an incident</h2>
-                <p className={meta}>{person.name}</p>
-                <label className={labelClass} htmlFor="incident-person">
-                  Resident
-                </label>
-                <select
-                  id="incident-person"
-                  className={field}
-                  value={person.id}
-                  onChange={(event) => setSelected(event.target.value)}
-                >
-                  {residents.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-                <label className={labelClass} htmlFor="incident-kind">
-                  Kind
-                </label>
-                <select
-                  id="incident-kind"
-                  className={field}
-                  value={kind}
-                  onChange={(event) => setKind(event.target.value)}
-                >
-                  {INCIDENT_KINDS.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-                <label className={labelClass} htmlFor="incident-summary">
-                  What happened
-                </label>
-                <textarea
-                  id="incident-summary"
-                  className={area}
-                  value={summary}
-                  onChange={(event) => setSummary(event.target.value)}
-                />
-                <div className={actions}>
-                  <button
-                    type="submit"
-                    className={btn}
-                    disabled={!summary.trim() || busyId === `incident-${person.id}`}
-                  >
-                    <Spin on={busyId === `incident-${person.id}`} />
-                    Log incident
-                  </button>
-                </div>
-              </form>
-            </section>
+            </div>
           )}
         </>
       )}
@@ -379,7 +353,51 @@ export default function WorkerPage() {
 
 const labelClass = "mb-2 mt-3.5 block text-xs font-semibold tracking-[0.12em] text-soft uppercase";
 
-function AddPerson({ busyId, onAdd }) {
+function ResidentPicker({ residents, notes, person, adding, onSelect, onToggleAdd }) {
+  return (
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] items-stretch gap-2.5">
+      {residents.length > 0 && (
+        <ul className="contents">
+          {residents.map((item) => {
+            const kindName = statusKind(item, notes);
+            const pressed = person?.id === item.id;
+            return (
+              <li key={item.id} className="min-w-0">
+                <button
+                  type="button"
+                  aria-pressed={pressed}
+                  className="group grid h-full min-h-[120px] w-full grid-cols-[40px_minmax(0,1fr)] items-center gap-x-3 gap-y-2 rounded-xl border border-line bg-white px-4 py-3.5 text-left aria-pressed:border-[#b7e0de] aria-pressed:bg-mint"
+                  onClick={() => onSelect(item.id)}
+                >
+                  <PersonIcon pressed={pressed} />
+                  <span className="col-start-2 row-start-1 min-w-0">
+                    <strong className="block truncate font-semibold tracking-[-0.02em]">{item.name}</strong>
+                  </span>
+                  <em className={`${tone(kindName, pressed)} col-start-2 row-start-2 justify-self-start`}>
+                    <StatusIcon kind={kindName} />
+                    {statusLabel(item, notes)}
+                  </em>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {residents.length > 0 && !adding && (
+        <button
+          type="button"
+          className="flex h-full min-h-[120px] items-center justify-center gap-2 rounded-xl border border-dashed border-[rgba(16,32,51,0.22)] bg-white px-4 py-3.5 font-semibold text-deep"
+          onClick={onToggleAdd}
+        >
+          <PlusIcon />
+          Add a resident
+        </button>
+      )}
+    </div>
+  );
+}
+
+function AddPerson({ busyId, onAdd, onCancel }) {
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
   const ageNumber = Number(age);
@@ -420,10 +438,17 @@ function AddPerson({ busyId, onAdd }) {
           onChange={(event) => setAge(event.target.value)}
         />
       </label>
-      <button className={btn} type="submit" disabled={!ready || busyId === "resident-new"}>
-        <Spin on={busyId === "resident-new"} />
-        Add
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button className={btn} type="submit" disabled={!ready || busyId === "resident-new"}>
+          <Spin on={busyId === "resident-new"} />
+          Add
+        </button>
+        {onCancel && (
+          <button className={ghost} type="button" onClick={onCancel}>
+            Cancel
+          </button>
+        )}
+      </div>
     </form>
   );
 }
@@ -473,23 +498,77 @@ function StatusIcon({ kind }) {
   );
 }
 
-function statusLabel(person) {
-  if (person.approved) return "Approved";
-  if (person.sent) return "Sent";
-  if (person.dayNote.trim()) return "To send";
-  return "No note";
+function statusLabel(person, notes) {
+  const mine = residentNotes(person.id, notes);
+  const unsent = mine.filter((note) => !note.sent);
+  if (!mine.length) return "No notes";
+  if (unsent.length === 1) return "1 to send";
+  if (unsent.length > 1) return `${unsent.length} to send`;
+  if (mine.some((note) => !note.approved)) return "Sent";
+  return "Approved";
 }
 
-function statusKind(person) {
-  if (person.approved) return "approved";
-  if (person.sent) return "sent";
-  if (person.dayNote.trim()) return "ready";
-  return "wait";
+function statusKind(person, notes) {
+  const mine = residentNotes(person.id, notes);
+  if (!mine.length) return "wait";
+  if (mine.some((note) => !note.sent)) return "ready";
+  if (mine.some((note) => !note.approved)) return "sent";
+  return "approved";
+}
+
+function LoggedNote({ note, number, flags, busyId, onSend }) {
+  const [quote, setQuote] = useState("");
+  return (
+    <article className={sheet}>
+      <header className={sheetHead}>
+        <div>
+          <h2 className={cardTitle}>Note {number}</h2>
+          <p className="text-soft">{note.when}</p>
+        </div>
+        <span className={tone(note.approved ? "approved" : note.sent ? "sent" : "ready")}>
+          {note.approved ? "Approved" : note.sent ? "Sent" : "To send"}
+        </span>
+      </header>
+      <p className="mt-3 whitespace-pre-wrap leading-relaxed">{note.jot}</p>
+      <div className={findings}>
+        <section className={finding}>
+          <h3 className={findingTitle}>Care notes</h3>
+          <ul className={points}>
+            {carePoints(note).map((line) => (
+              <li className={point} key={line}>
+                {line}
+              </li>
+            ))}
+          </ul>
+        </section>
+        <section className={finding}>
+          <div className="flex items-baseline justify-between gap-3">
+            <h3 className={findingTitle}>Suggested flags</h3>
+            <p className="text-sm font-semibold text-ink">{flagCount(flags.length)}</p>
+          </div>
+          <PersonFlags flags={flags} onSource={setQuote} />
+          {quote && <p className={sourceQuote}>In the note: “{quote}”</p>}
+        </section>
+      </div>
+      {!note.sent && (
+        <div className={actions}>
+          <button type="button" className={btn} disabled={busyId === note.id} onClick={() => onSend(note.id, true)}>
+            <Spin on={busyId === note.id} />
+            Send for approval
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function flagCount(count) {
+  return count === 1 ? "1 flag" : `${count} flags`;
 }
 
 function PersonFlags({ flags, onSource }) {
   if (!flags.length) {
-    return <p className={emptyLine}>Only when the note supports them.</p>;
+    return <p className={emptyLine}>Concerns from the note and the care notes show here.</p>;
   }
   return (
     <ul className={points}>
@@ -497,7 +576,10 @@ function PersonFlags({ flags, onSource }) {
         <li className={point} key={flag.id}>
           <p className={kick}>{labelFor(FLAG_KINDS, flag.kind)}</p>
           <strong className="block font-semibold">{flag.title}</strong>
-          <p>{flag.why}</p>
+          <p className="mt-2">
+            <span className={`${kick} block`}>Why</span>
+            {flag.why}
+          </p>
           {flag.sourceQuote && (
             <button type="button" className={sourceLink} onClick={() => onSource(flag.sourceQuote)}>
               Source: “{flag.sourceQuote}”
@@ -509,12 +591,3 @@ function PersonFlags({ flags, onSource }) {
   );
 }
 
-function showSource(fieldNode, source, setQuote) {
-  setQuote(source);
-  if (!fieldNode || !source) return;
-  const index = fieldNode.value.toLowerCase().indexOf(source.toLowerCase());
-  if (index < 0) return;
-  fieldNode.focus();
-  fieldNode.setSelectionRange(index, index + source.length);
-  fieldNode.scrollIntoView({ block: "center" });
-}

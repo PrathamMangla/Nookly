@@ -9,7 +9,7 @@ USERS = [
         "role": "support_worker",
         "role_label": "Support worker",
         "does": "Writes notes, reads the handover, logs incidents",
-        "status": "On shift",
+        "status": "In today",
     },
     {
         "id": "hannah",
@@ -19,7 +19,7 @@ USERS = [
         "role": "shift_lead",
         "role_label": "Shift lead",
         "does": "Reviews flags, assigns actions, publishes the handover",
-        "status": "On shift",
+        "status": "In today",
     },
     {
         "id": "daniel",
@@ -48,21 +48,21 @@ SETTINGS = [
         "id": "home",
         "label": "Home",
         "value": "Riverside",
-        "hint": "The service this shift belongs to.",
+        "hint": "The service these residents live in.",
         "group_name": "service",
     },
     {
         "id": "day-shift",
-        "label": "Day shift",
+        "label": "Day hours",
         "value": "07:00–19:00",
-        "hint": "When the day team is on.",
+        "hint": "When the day team is with residents.",
         "group_name": "service",
     },
     {
         "id": "night-shift",
-        "label": "Night shift",
+        "label": "Night hours",
         "value": "19:00–07:00",
-        "hint": "When the night team takes the handover.",
+        "hint": "When the evening team is with residents.",
         "group_name": "service",
     },
     {
@@ -75,7 +75,7 @@ SETTINGS = [
     {
         "id": "handover-rule",
         "label": "Handover",
-        "value": "A shift lead reviews the OpenAI draft before it is published",
+        "value": "A shift lead reviews the advice before it is saved",
         "hint": "The draft is written from the notes. A person publishes it.",
         "group_name": "service",
     },
@@ -158,10 +158,18 @@ def _sync_users(conn) -> None:
         conn.execute(
             """
             UPDATE users
-            SET role = %s, role_label = %s, does = %s, email = %s, password_hash = %s
+            SET role = %s, role_label = %s, does = %s, status = %s, email = %s, password_hash = %s
             WHERE id = %s
             """,
-            (user["role"], user["role_label"], user["does"], user["email"], stored, user["id"]),
+            (
+                user["role"],
+                user["role_label"],
+                user["does"],
+                user["status"],
+                user["email"],
+                stored,
+                user["id"],
+            ),
         )
 
 
@@ -173,6 +181,7 @@ def _clear_demo(conn) -> None:
     ).fetchall()
     if found:
         conn.execute("DELETE FROM flags WHERE resident_id = ANY(%s)", (DEMO_IDS,))
+        conn.execute("DELETE FROM notes WHERE resident_id = ANY(%s)", (DEMO_IDS,))
         conn.execute("DELETE FROM incidents WHERE resident_id = ANY(%s)", (DEMO_IDS,))
         conn.execute("DELETE FROM actions WHERE resident_id = ANY(%s)", (DEMO_IDS,))
         conn.execute("DELETE FROM residents WHERE id = ANY(%s)", (DEMO_IDS,))
@@ -198,13 +207,11 @@ def _clear_demo(conn) -> None:
 def _ensure_settings(conn) -> None:
     count = conn.execute("SELECT COUNT(*) AS n FROM settings").fetchone()["n"]
     if count:
-        conn.execute(
-            "UPDATE settings SET value = %s, hint = %s WHERE id = 'handover-rule'",
-            (
-                "A shift lead reviews the OpenAI draft before it is published",
-                "The draft is written from the notes. A person publishes it.",
-            ),
-        )
+        for item in SETTINGS:
+            conn.execute(
+                "UPDATE settings SET label = %s, value = %s, hint = %s WHERE id = %s",
+                (item["label"], item["value"], item["hint"], item["id"]),
+            )
         return
     rows = [{**item, "position": index} for index, item in enumerate(SETTINGS)]
     with conn.cursor() as cur:

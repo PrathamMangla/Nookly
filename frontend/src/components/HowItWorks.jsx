@@ -85,10 +85,10 @@ function LeadStep() {
         Hannah reviews the flags and publishes the handover.
       </h3>
       <p className="max-w-[52ch] text-soft">
-        She assigns the actions, approves the notes, and sends the night shift what to do.
+        She assigns the actions, approves the notes, and writes advice for each resident.
       </p>
       <Mini>
-        <p className="mb-2 text-xs font-semibold tracking-[0.08em] text-soft uppercase">Handover · nights</p>
+        <p className="mb-2 text-xs font-semibold tracking-[0.08em] text-soft uppercase">Handover · Helen</p>
         <p className="font-serif text-[1.02rem] leading-normal text-ink">
           Knee ache settled. Paracetamol at 14:00, as charted. No pain at 17:30. Crossword after tea.
           Evening medication due at 18:00.
@@ -103,7 +103,7 @@ function ManagerStep() {
     <>
       <p className="text-[0.78rem] font-semibold tracking-[0.08em] text-teal uppercase">03 · Manager</p>
       <h3 className="mt-1.5 mb-2 text-[1.45rem] font-semibold tracking-[-0.03em]">Daniel sees the service, not every note.</h3>
-      <p className="max-w-[52ch] text-soft">Incidents, the flags this shift, and how Riverside is set up.</p>
+      <p className="max-w-[52ch] text-soft">Incidents, the flags for residents, and how Riverside is set up.</p>
       <Mini>
         <Row hot name="Arthur Bennett" note="Unsteady, eating less" />
         <Row hot name="Nora Shah" note="Broken sleep" />

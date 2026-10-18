@@ -63,7 +63,7 @@ export default function Nav() {
               className="text-[0.95rem] font-medium text-soft hover:text-ink max-sm:text-[0.82rem]"
               to={session ? session.path : "/login"}
             >
-              {session ? "Your shift" : "Sign in"}
+              {session ? "Your residents" : "Sign in"}
             </Link>
           </li>
         </ul>

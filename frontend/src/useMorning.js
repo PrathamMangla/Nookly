@@ -4,6 +4,10 @@ import {
   createAction,
   createIncident,
   createResident,
+  adviseResidentActions,
+  adviseActionHandover,
+  adviseResidentHandover,
+  saveActionHandover,
   draftNote,
   draftResidentActions,
   draftResidentHandover,
@@ -13,6 +17,7 @@ import {
   publishShift,
   redraftShift,
   reviewFlag as reviewFlagRequest,
+  saveFlag,
   saveHandover,
   saveSetting as saveSettingRequest,
   savePoints,
@@ -25,6 +30,7 @@ import {
 
 export function useMorning() {
   const [residents, setResidents] = useState(null);
+  const [notes, setNotes] = useState(null);
   const [users, setUsers] = useState(null);
   const [flags, setFlags] = useState(null);
   const [incidents, setIncidents] = useState(null);
@@ -43,6 +49,7 @@ export function useMorning() {
         const desk = await getDesk();
         if (ignore) return;
         setResidents(desk.residents);
+        setNotes(desk.notes);
         setUsers(desk.users);
         setFlags(desk.flags);
         setIncidents(desk.incidents);
@@ -52,7 +59,7 @@ export function useMorning() {
         setShift(desk.shift);
         setError("");
       } catch (err) {
-        if (!ignore) setError(err.message || "The shift could not be loaded.");
+        if (!ignore) setError(err.message || "The desk could not be loaded.");
       }
     }
 
@@ -64,6 +71,10 @@ export function useMorning() {
 
   function replaceResident(next) {
     setResidents((current) => current.map((item) => (item.id === next.id ? { ...item, ...next } : item)));
+  }
+
+  function replaceNote(next) {
+    setNotes((current) => current.map((item) => (item.id === next.id ? next : item)));
   }
 
   function replaceById(setter, next) {
@@ -96,6 +107,7 @@ export function useMorning() {
 
   return {
     residents,
+    notes,
     users,
     flags,
     incidents,
@@ -105,15 +117,15 @@ export function useMorning() {
     shift,
     error,
     busyId,
-    send: (id, sent) => run(id, () => sendNote(id, sent), replaceResident),
-    approve: (id, approved) => run(id, () => approveNote(id, approved), replaceResident),
+    send: (id, sent) => run(id, () => sendNote(id, sent), replaceNote),
+    approve: (id, approved) => run(id, () => approveNote(id, approved), replaceNote),
     draft: (id, jot) =>
-      run(`draft-${id}`, () => draftNote(id, jot), async (next) => {
-        replaceResident(next);
+      run(`draft-${id}`, () => draftNote(id, jot), async (created) => {
+        setNotes((current) => [created, ...(current || [])]);
         setFlags(await getFlags());
       }),
     saveTags: (id, tags) => run(`tags-${id}`, () => updateTags(id, tags), replaceResident),
-    savePoints: (id, points) => run(id, () => savePoints(id, points), replaceResident),
+    savePoints: (id, points) => run(id, () => savePoints(id, points), replaceNote),
     addResident: (body) =>
       run("resident-new", () => createResident(body), (created) => {
         setResidents((current) => [...current, created]);
@@ -122,6 +134,22 @@ export function useMorning() {
       run(`handover-${id}`, () => saveHandover(id, handover), replaceResident),
     draftResidentHandover: (id) =>
       run(`handover-${id}`, () => draftResidentHandover(id), replaceResident),
+    adviseHandover: (id) => run(`advice-${id}`, () => adviseResidentHandover(id)),
+    adviseActionHandover: (id) => run(`advice-${id}`, () => adviseActionHandover(id)),
+    saveActionHandover: (id, handover) =>
+      run(`handover-${id}`, () => saveActionHandover(id, handover), (next) => {
+        setActions((current) => {
+          const actions = (current || []).map((item) => (item.id === next.id ? next : item));
+          const text = actions
+            .filter((item) => item.residentId === next.residentId && String(item.handover || "").trim())
+            .map((item) => `${item.title}\n${item.handover.trim()}`)
+            .join("\n\n");
+          setResidents((people) =>
+            (people || []).map((person) => (person.id === next.residentId ? { ...person, handover: text } : person)),
+          );
+          return actions;
+        });
+      }),
     logIncident: (residentId, kind, summary) =>
       run(`incident-${residentId}`, () => createIncident(residentId, kind, summary), (created) => {
         setIncidents((current) => [created, ...current]);
@@ -130,10 +158,14 @@ export function useMorning() {
       run(id, () => updateIncident(id, status), (next) => replaceById(setIncidents, next)),
     reviewFlag: (id, status) =>
       run(id, () => reviewFlagRequest(id, status), (next) => replaceById(setFlags, next)),
-    assignAction: (body) =>
-      run("action-new", () => createAction(body), (created) => {
+    saveFlag: (id, body) =>
+      run(`flag-edit-${id}`, () => saveFlag(id, body), (next) => replaceById(setFlags, next)),
+    assignAction: (body, busyKey = "action-new") =>
+      run(busyKey, () => createAction(body), (created) => {
         setActions((current) => [created, ...current]);
       }),
+    adviseActions: (id, flagIds, incidentIds) =>
+      run(`actions-${id}`, () => adviseResidentActions(id, flagIds, incidentIds)),
     draftActions: (id) =>
       run(`actions-${id}`, () => draftResidentActions(id), (created) => {
         setActions((current) => [

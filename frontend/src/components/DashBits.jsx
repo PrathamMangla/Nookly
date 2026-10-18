@@ -8,7 +8,7 @@ export function Status({ error, ready }) {
     return (
       <div className="flex min-h-56 items-center justify-center" role="status" aria-live="polite">
         <Spinner />
-        <span className="sr-only">Loading the shift.</span>
+        <span className="sr-only">Loading.</span>
       </div>
     );
   }

@@ -1,5 +1,5 @@
 import { useOutletContext } from "react-router-dom";
-import { byStatus, carePoints, FLAG_KINDS, INCIDENT_KINDS, INCIDENT_STATUS, labelFor } from "../care.js";
+import { byStatus, FLAG_KINDS, INCIDENT_KINDS, INCIDENT_STATUS, labelFor, residentNotes } from "../care.js";
 import { DeskIntro, Stats, Status } from "../components/DashBits.jsx";
 import { Spin } from "../components/Spinner.jsx";
 import { ROLES } from "../roles.js";
@@ -9,10 +9,9 @@ const role = ROLES[2];
 const TEAL = "#0f7a84";
 
 export default function ManagerPage() {
-  const { residents, flags, incidents, actions, error, busyId, trackIncident } = useOutletContext();
-  const ready = Boolean(residents && flags && incidents && actions);
+  const { residents, notes, flags, incidents, actions, error, busyId, trackIncident } = useOutletContext();
+  const ready = Boolean(residents && notes && flags && incidents && actions);
   const openActions = actions?.filter((item) => item.status === "open") || [];
-  const notes = residents?.filter((person) => carePoints(person).length) || [];
   const actionParts = ready
     ? residents.map((person) => ({
         id: person.id,
@@ -24,7 +23,7 @@ export default function ManagerPage() {
     ? residents.map((person) => ({
         id: person.id,
         label: shortName(person.name),
-        value: carePoints(person).length,
+        value: residentNotes(person.id, notes).length,
       }))
     : [];
   const flagParts = FLAG_KINDS.map((kind) => ({
@@ -45,7 +44,7 @@ export default function ManagerPage() {
           <Stats
             items={[
               { label: "Open actions", value: openActions.length },
-              { label: "Total notes", value: notes.length },
+              { label: "Total notes", value: notes?.length || 0 },
               { label: "Flags", value: flags.length },
               { label: "Incidents", value: incidents.length },
             ]}
@@ -54,13 +53,13 @@ export default function ManagerPage() {
             <ChartCard title="Open actions" caption="Open actions for each person.">
               <ColumnChart parts={actionParts} color={TEAL} empty="No open actions." />
             </ChartCard>
-            <ChartCard title="Total notes" caption="Care points written for each person.">
+            <ChartCard title="Total notes" caption="Notes logged for each person.">
               <ColumnChart parts={noteParts} color={TEAL} empty="No notes yet." />
             </ChartCard>
             <ChartCard title="Flags" caption="Flags raised from the notes, by kind.">
               <ColumnChart parts={flagParts} color={TEAL} empty="No flags yet." />
             </ChartCard>
-            <ChartCard title="Incidents" caption="Incidents logged on this shift, by kind.">
+            <ChartCard title="Incidents" caption="Incidents logged, by kind.">
               <ColumnChart parts={incidentParts} color={TEAL} empty="No incidents yet." />
             </ChartCard>
           </div>

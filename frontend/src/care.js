@@ -35,6 +35,10 @@ export function byStatus(rows) {
   return [...rows].sort((a, b) => (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9));
 }
 
+export function residentNotes(residentId, notes) {
+  return (notes || []).filter((note) => note.residentId === residentId);
+}
+
 export function residentSources(residentId, flags, incidents) {
   return {
     flags: (flags || []).filter((flag) => flag.residentId === residentId),

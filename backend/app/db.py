@@ -1,5 +1,7 @@
 import json
 import os
+import re
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
@@ -53,6 +55,20 @@ CREATE TABLE IF NOT EXISTS flags (
     title TEXT NOT NULL,
     why TEXT NOT NULL,
     status TEXT NOT NULL,
+    position INTEGER NOT NULL
+)
+"""
+
+NOTES_TABLE = """
+CREATE TABLE IF NOT EXISTS notes (
+    id TEXT PRIMARY KEY,
+    resident_id TEXT NOT NULL,
+    jot TEXT NOT NULL,
+    day_note TEXT NOT NULL,
+    points TEXT NOT NULL DEFAULT '',
+    sent BOOLEAN NOT NULL DEFAULT FALSE,
+    approved BOOLEAN NOT NULL DEFAULT FALSE,
+    when_label TEXT NOT NULL,
     position INTEGER NOT NULL
 )
 """
@@ -149,13 +165,17 @@ def init_db() -> None:
         conn.execute(FLAGS_TABLE)
         conn.execute("ALTER TABLE flags ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'note'")
         conn.execute("ALTER TABLE flags ADD COLUMN IF NOT EXISTS source_quote TEXT NOT NULL DEFAULT ''")
+        conn.execute("ALTER TABLE flags ADD COLUMN IF NOT EXISTS note_id TEXT NOT NULL DEFAULT ''")
+        conn.execute(NOTES_TABLE)
         conn.execute(INCIDENTS_TABLE)
+        _copy_resident_notes(conn)
         conn.execute(ACTIONS_TABLE)
         conn.execute(
             "ALTER TABLE actions ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual'"
         )
         conn.execute("ALTER TABLE actions ADD COLUMN IF NOT EXISTS flag_id TEXT NOT NULL DEFAULT ''")
         conn.execute("ALTER TABLE actions ADD COLUMN IF NOT EXISTS incident_id TEXT NOT NULL DEFAULT ''")
+        conn.execute("ALTER TABLE actions ADD COLUMN IF NOT EXISTS handover TEXT NOT NULL DEFAULT ''")
         conn.execute(AUDIT_TABLE)
         conn.execute(SETTINGS_TABLE)
         conn.execute(SHIFT_TABLE)
@@ -227,6 +247,25 @@ def user_dict(row: dict) -> dict:
     }
 
 
+_BAD_WHY = re.compile(
+    r"fact in the note|a person should|should look|this is a flag|not a diagnosis|not a decision",
+    re.IGNORECASE,
+)
+
+
+def _flag_why(text: str, quote: str = "") -> str:
+    cleaned = re.sub(
+        r"(?:\s*It is not a diagnosis or a decision\.?)+$",
+        "",
+        " ".join(str(text or "").split()).strip(),
+        flags=re.IGNORECASE,
+    ).strip()
+    source = " ".join(str(quote or "").split()).strip()
+    if source and (not cleaned or _BAD_WHY.search(cleaned)):
+        return source
+    return cleaned or source
+
+
 def flag_dict(row: dict) -> dict:
     return {
         "id": row["id"],
@@ -235,9 +274,25 @@ def flag_dict(row: dict) -> dict:
         "room": row["room"],
         "kind": row["kind"],
         "title": row["title"],
-        "why": row["why"],
+        "why": _flag_why(row["why"], row.get("source_quote") or ""),
         "source_quote": row.get("source_quote") or "",
+        "note_id": row.get("note_id") or "",
         "status": row["status"],
+    }
+
+
+def note_dict(row: dict) -> dict:
+    return {
+        "id": row["id"],
+        "resident_id": row["resident_id"],
+        "resident_name": row["resident_name"],
+        "room": row["room"],
+        "jot": row["jot"],
+        "day_note": row["day_note"],
+        "points": _points(row.get("points")),
+        "sent": bool(row["sent"]),
+        "approved": bool(row["approved"]),
+        "when_label": row["when_label"],
     }
 
 
@@ -268,6 +323,7 @@ def action_dict(row: dict) -> dict:
         "source": row.get("source") or "manual",
         "flag_id": row.get("flag_id") or "",
         "incident_id": row.get("incident_id") or "",
+        "handover": row.get("handover") or "",
     }
 
 
@@ -289,6 +345,50 @@ def setting_dict(row: dict) -> dict:
         "hint": row["hint"],
         "group_name": row["group_name"],
     }
+
+
+def _copy_resident_notes(conn) -> None:
+    """Move the single note that used to live on a resident into the notes table."""
+    rows = conn.execute("SELECT * FROM residents ORDER BY position").fetchall()
+    for row in rows:
+        found = conn.execute(
+            "SELECT id FROM notes WHERE resident_id = %s LIMIT 1",
+            (row["id"],),
+        ).fetchone()
+        if found:
+            continue
+        jot = row.get("jot") or ""
+        day_note = row.get("day_note") or ""
+        if not jot.strip() and not day_note.strip():
+            continue
+        note_id = f"note-{uuid.uuid4().hex[:8]}"
+        position = conn.execute("SELECT COALESCE(MAX(position), -1) AS n FROM notes").fetchone()["n"] + 1
+        conn.execute(
+            """
+            INSERT INTO notes (
+                id, resident_id, jot, day_note, points, sent, approved, when_label, position
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'Earlier', %s)
+            """,
+            (
+                note_id,
+                row["id"],
+                jot,
+                day_note,
+                row.get("points") or "",
+                bool(row["sent"]),
+                bool(row["approved"]),
+                position,
+            ),
+        )
+        conn.execute(
+            """
+            UPDATE flags
+            SET note_id = %s
+            WHERE resident_id = %s AND source = 'note' AND note_id = ''
+            """,
+            (note_id, row["id"]),
+        )
 
 
 def shift_dict(row: dict) -> dict:

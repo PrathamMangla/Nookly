@@ -57,28 +57,28 @@ export function login(email, password) {
 }
 
 export function sendNote(id, sent) {
-  return request(`/api/residents/${id}/send`, {
+  return request(`/api/notes/${id}/send`, {
     method: "POST",
     body: JSON.stringify({ sent }),
   });
 }
 
 export function approveNote(id, approved) {
-  return request(`/api/residents/${id}/approve`, {
+  return request(`/api/notes/${id}/approve`, {
     method: "POST",
     body: JSON.stringify({ approved }),
   });
 }
 
 export function savePoints(id, points) {
-  return request(`/api/residents/${id}/points`, {
+  return request(`/api/notes/${id}/points`, {
     method: "PUT",
     body: JSON.stringify({ points }),
   });
 }
 
 export function draftNote(id, jot) {
-  return request(`/api/residents/${id}/draft`, {
+  return request(`/api/residents/${id}/notes`, {
     method: "POST",
     body: JSON.stringify({ jot }),
   });
@@ -95,8 +95,30 @@ export function draftResidentHandover(id) {
   return request(`/api/residents/${id}/handover/draft`, { method: "POST" });
 }
 
+export function adviseResidentHandover(id) {
+  return request(`/api/residents/${id}/handover/advice`, { method: "POST" });
+}
+
+export function adviseActionHandover(id) {
+  return request(`/api/actions/${id}/handover/advice`, { method: "POST" });
+}
+
+export function saveActionHandover(id, handover) {
+  return request(`/api/actions/${id}/handover`, {
+    method: "PUT",
+    body: JSON.stringify({ handover }),
+  });
+}
+
 export function draftResidentActions(id) {
   return request(`/api/residents/${id}/actions/draft`, { method: "POST" });
+}
+
+export function adviseResidentActions(id, flagIds, incidentIds) {
+  return request(`/api/residents/${id}/actions/advice`, {
+    method: "POST",
+    body: JSON.stringify({ flagIds, incidentIds }),
+  });
 }
 
 export function getFlags() {
@@ -141,6 +163,13 @@ export function reviewFlag(id, status) {
   return request(`/api/flags/${id}`, {
     method: "PATCH",
     body: JSON.stringify({ status }),
+  });
+}
+
+export function saveFlag(id, body) {
+  return request(`/api/flags/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
   });
 }
 
