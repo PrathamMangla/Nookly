@@ -1,4 +1,5 @@
 import { useOutletContext } from "react-router-dom";
+import { byRecent, localWhen } from "../care.js";
 import { SettingsForm, Status } from "../components/DashBits.jsx";
 import { ACCESS, ROLES } from "../roles.js";
 import { meta, notice, sectionLabel } from "../ui.js";
@@ -87,12 +88,12 @@ export default function AdminPage() {
             <h2 className={sectionLabel}>Audit trail</h2>
             <p className={meta}>Who did what. The text of a care note is not stored here.</p>
             <ul>
-              {audit.map((row, index) => (
+              {byRecent(audit).map((row, index) => (
                 <li
-                  className={`grid items-baseline gap-3 py-3 md:grid-cols-[130px_160px_1.1fr_1.3fr] ${index ? "border-t border-line" : ""}`}
+                  className={`grid items-baseline gap-3 py-3 md:grid-cols-[220px_160px_1.1fr_1.3fr] ${index ? "border-t border-line" : ""}`}
                   key={row.id}
                 >
-                  <span className="text-soft">{row.at}</span>
+                  <span className="text-soft">{localWhen(row.at)}</span>
                   <strong className="font-semibold">{row.actor}</strong>
                   <span className="text-soft">{row.action}</span>
                   <span className="text-soft">{row.subject}</span>

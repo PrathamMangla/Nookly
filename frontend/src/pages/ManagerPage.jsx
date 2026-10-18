@@ -1,5 +1,5 @@
 import { useOutletContext } from "react-router-dom";
-import { byStatus, FLAG_KINDS, INCIDENT_KINDS, INCIDENT_STATUS, labelFor, residentNotes } from "../care.js";
+import { byRecent, FLAG_KINDS, INCIDENT_KINDS, INCIDENT_STATUS, labelFor, localWhen, residentNotes } from "../care.js";
 import { DeskIntro, Stats, Status } from "../components/DashBits.jsx";
 import { Spin } from "../components/Spinner.jsx";
 import { ROLES } from "../roles.js";
@@ -66,14 +66,15 @@ export default function ManagerPage() {
           <section>
             <h2 className={sectionLabel}>Incidents</h2>
             {incidents.length === 0 && <p className={settled}>No incidents logged yet.</p>}
-            {byStatus(incidents).map((item) => (
+            {byRecent(incidents).map((item) => (
               <article className={`${record} mb-3`} key={item.id}>
                 <header className={recordHead}>
                   <div>
                     <p className={kick}>{labelFor(INCIDENT_KINDS, item.kind)}</p>
                     <h3 className={recordTitle}>{item.residentName}</h3>
                     <p className={meta}>
-                      {item.when} · {item.reportedBy}
+                      {localWhen(item.at)}
+                      {item.reportedBy ? ` · ${item.reportedBy}` : ""}
                     </p>
                   </div>
                   <label className="block min-w-[140px] text-xs font-semibold tracking-[0.08em] text-soft uppercase max-lg:w-full max-lg:min-w-0">

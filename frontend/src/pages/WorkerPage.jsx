@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import {
-  byStatus,
+  byRecent,
   carePoints,
   FLAG_KINDS,
   INCIDENT_KINDS,
   labelFor,
+  localWhen,
   residentNotes,
 } from "../care.js";
 import { DeskIntro, Stats, Status, Tabs } from "../components/DashBits.jsx";
@@ -184,11 +185,11 @@ export default function WorkerPage() {
                 <p className={settled}>No residents yet.</p>
               ) : (
                 <article className={sheet}>
-                  {byStatus(shiftActions.filter((action) => action.residentId === person.id)).length === 0 ? (
+                  {byRecent(shiftActions.filter((action) => action.residentId === person.id)).length === 0 ? (
                     <p className="leading-relaxed">No actions yet for this resident.</p>
                   ) : (
                     <div className="grid gap-3">
-                      {byStatus(shiftActions.filter((action) => action.residentId === person.id)).map((action) => (
+                      {byRecent(shiftActions.filter((action) => action.residentId === person.id)).map((action) => (
                         <CareCard
                           key={action.id}
                           action={action}
@@ -218,9 +219,11 @@ export default function WorkerPage() {
                     <p className="leading-relaxed">No handover yet for this resident.</p>
                   ) : (
                     <div className="grid gap-3">
-                      {(shiftActions || [])
-                        .filter((action) => action.residentId === person.id && String(action.handover || "").trim())
-                        .map((action) => (
+                      {byRecent(
+                        (shiftActions || []).filter(
+                          (action) => action.residentId === person.id && String(action.handover || "").trim(),
+                        ),
+                      ).map((action) => (
                           <CareCard
                             key={action.id}
                             action={action}
@@ -324,18 +327,17 @@ export default function WorkerPage() {
                 </p>
               )}
               {person &&
-                byStatus(
-                  personIncidents.map((item, index) => ({
-                    ...item,
-                    number: personIncidents.length - index,
-                  })),
-                ).map((item) => (
+                byRecent(personIncidents).map((item, index, list) => ({
+                  ...item,
+                  number: list.length - index,
+                })).map((item) => (
                   <article className={sheet} key={item.id}>
                     <header className={sheetHead}>
                       <div>
                         <h2 className={cardTitle}>Incident {item.number}</h2>
                         <p className="text-soft">
-                          {labelFor(INCIDENT_KINDS, item.kind)} · {item.when}
+                          {labelFor(INCIDENT_KINDS, item.kind)}
+                          {localWhen(item.at) ? ` · ${localWhen(item.at)}` : ""}
                         </p>
                       </div>
                       <span className={tone(item.status === "closed" ? "approved" : "ready")}>
@@ -360,7 +362,7 @@ function ResidentPicker({ residents, notes, person, adding, onSelect, onToggleAd
     <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] items-stretch gap-2.5">
       {residents.length > 0 && (
         <ul className="contents">
-          {residents.map((item) => {
+          {byRecent(residents).map((item) => {
             const kindName = statusKind(item, notes);
             const pressed = person?.id === item.id;
             return (
@@ -374,6 +376,9 @@ function ResidentPicker({ residents, notes, person, adding, onSelect, onToggleAd
                   <PersonIcon pressed={pressed} />
                   <span className="col-start-2 row-start-1 min-w-0">
                     <strong className="block truncate font-semibold tracking-[-0.02em]">{item.name}</strong>
+                    {localWhen(item.at) && (
+                      <span className="mt-0.5 block truncate text-sm font-normal text-soft">{localWhen(item.at)}</span>
+                    )}
                   </span>
                   <em className={`${tone(kindName, pressed)} col-start-2 row-start-2 justify-self-start`}>
                     <StatusIcon kind={kindName} />
@@ -525,7 +530,7 @@ function LoggedNote({ note, number, flags, busyId, onSend }) {
       <header className={sheetHead}>
         <div>
           <h2 className={cardTitle}>Note {number}</h2>
-          <p className="text-soft">{note.when}</p>
+          <p className="text-soft">{localWhen(note.at)}</p>
         </div>
         <span className={tone(note.approved ? "approved" : note.sent ? "sent" : "ready")}>
           {note.approved ? "Approved" : note.sent ? "Sent" : "To send"}
@@ -568,13 +573,23 @@ function flagCount(count) {
   return count === 1 ? "1 flag" : `${count} flags`;
 }
 
+function SectionTime({ label, at }) {
+  const when = localWhen(at);
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+      <p className={kick}>{label}</p>
+      {when && <p className="text-sm text-soft">{when}</p>}
+    </div>
+  );
+}
+
 function NameTabs({ residents, person, onSelect }) {
   if (!residents?.length) return null;
   return (
     <div>
       <p className={fieldLabel}>Name</p>
       <div className="flex flex-wrap gap-2">
-        {residents.map((item) => {
+        {byRecent(residents).map((item) => {
           const chosen = item.id === person?.id;
           return (
             <button
@@ -584,7 +599,14 @@ function NameTabs({ residents, person, onSelect }) {
               className={chosen ? btn : ghost}
               onClick={() => onSelect(item.id)}
             >
-              {item.name}
+              <span className="block text-left leading-tight">
+                {item.name}
+                {localWhen(item.at) && (
+                  <span className={`mt-0.5 block text-xs font-normal ${chosen ? "text-white/80" : "text-soft"}`}>
+                    {localWhen(item.at)}
+                  </span>
+                )}
+              </span>
             </button>
           );
         })}
@@ -609,17 +631,20 @@ function CareCard({ action, flags, incidents, notes, handover = false, busyId, o
     <section className="rounded-xl border border-line bg-white px-3.5 py-3">
       <div className="grid gap-3">
         <div>
-          <p className={kick}>Note</p>
+          <SectionTime label="Note" at={note?.at} />
           <p className="mt-1 whitespace-pre-wrap leading-relaxed">{noteText || "No note is linked."}</p>
         </div>
         <div>
-          <p className={kick}>{incident && !flag ? "Incident" : "Flag"}</p>
+          <SectionTime label={incident && !flag ? "Incident" : "Flag"} at={flag?.at || incident?.at} />
           {concern && <p className="mt-1 font-semibold break-words">{concern}</p>}
           {detail && <p className={`${meta} mt-1 break-words`}>{detail}</p>}
         </div>
         <div>
           <div className="flex items-start justify-between gap-3">
-            <p className={kick}>Actions</p>
+            <div>
+              <p className={kick}>Actions</p>
+              {localWhen(action.at) && <p className="mt-1 text-sm text-soft">{localWhen(action.at)}</p>}
+            </div>
             {onComplete && (
               <button
                 type="button"
@@ -636,7 +661,7 @@ function CareCard({ action, flags, incidents, notes, handover = false, busyId, o
         </div>
         {handover && (
           <div>
-            <p className={kick}>Handover</p>
+            <SectionTime label="Handover" at={action.at} />
             <ActionLines item={{ detail: action.handover, title: "" }} />
           </div>
         )}
@@ -671,10 +696,11 @@ function PersonFlags({ flags, onSource }) {
   }
   return (
     <ul className={points}>
-      {flags.map((flag) => (
+      {byRecent(flags).map((flag) => (
         <li className={point} key={flag.id}>
           <p className={kick}>{labelFor(FLAG_KINDS, flag.kind)}</p>
           <strong className="block font-semibold">{flag.title}</strong>
+          {localWhen(flag.at) && <p className="mt-1 text-sm text-soft">{localWhen(flag.at)}</p>}
           <p className="mt-2">
             <span className={`${kick} block`}>Why</span>
             {flag.why}

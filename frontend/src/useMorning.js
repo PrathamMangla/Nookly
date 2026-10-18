@@ -128,7 +128,7 @@ export function useMorning() {
     savePoints: (id, points) => run(id, () => savePoints(id, points), replaceNote),
     addResident: (body) =>
       run("resident-new", () => createResident(body), (created) => {
-        setResidents((current) => [...current, created]);
+        setResidents((current) => [created, ...(current || [])]);
       }),
     writeHandover: (id, handover) =>
       run(`handover-${id}`, () => saveHandover(id, handover), replaceResident),
@@ -142,6 +142,7 @@ export function useMorning() {
           const actions = (current || []).map((item) => (item.id === next.id ? next : item));
           const text = actions
             .filter((item) => item.residentId === next.residentId && String(item.handover || "").trim())
+            .sort((a, b) => (Date.parse(b.at || "") || 0) - (Date.parse(a.at || "") || 0))
             .map((item) => `${item.title}\n${item.handover.trim()}`)
             .join("\n\n");
           setResidents((people) =>

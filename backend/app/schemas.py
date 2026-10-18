@@ -30,6 +30,7 @@ class ResidentOut(BaseModel):
     points: list[str] = []
     sent: bool
     approved: bool
+    at: str = ""
 
 
 class FlagOut(BaseModel):
@@ -45,6 +46,7 @@ class FlagOut(BaseModel):
     source_quote: str = Field(default="", serialization_alias="sourceQuote")
     note_id: str = Field(default="", serialization_alias="noteId")
     status: str
+    at: str = ""
 
 
 class NoteOut(BaseModel):
@@ -60,6 +62,7 @@ class NoteOut(BaseModel):
     sent: bool
     approved: bool
     when_label: str = Field(serialization_alias="when")
+    at: str = ""
 
 
 class IncidentOut(BaseModel):
@@ -74,6 +77,7 @@ class IncidentOut(BaseModel):
     summary: str
     status: str
     when_label: str = Field(serialization_alias="when")
+    at: str = ""
 
 
 class ActionOut(BaseModel):
@@ -91,6 +95,7 @@ class ActionOut(BaseModel):
     flag_id: str = Field(default="", serialization_alias="flagId")
     incident_id: str = Field(default="", serialization_alias="incidentId")
     handover: str = ""
+    at: str = ""
 
 
 class AuditOut(BaseModel):

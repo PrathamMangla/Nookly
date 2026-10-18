@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import {
-  byStatus,
+  byRecent,
   carePoints,
   FLAG_KINDS,
   INCIDENT_KINDS,
   INCIDENT_STATUS,
   labelFor,
+  localWhen,
   residentSources,
   sourceText,
 } from "../care.js";
@@ -74,7 +75,7 @@ function noteLabel(note) {
   if (!note) return "";
   const text = String(note.jot || "").replace(/\s+/g, " ").trim();
   const clip = text.length > 96 ? `${text.slice(0, text.lastIndexOf(" ", 96) > 40 ? text.lastIndexOf(" ", 96) : 96)}…` : text;
-  const when = note.when ? note.when : "";
+  const when = localWhen(note.at);
   return [when, clip].filter(Boolean).join(" · ");
 }
 
@@ -216,7 +217,7 @@ export default function SeniorPage() {
                     An incident is what the carer logged. It is not a flag.
                   </p>
                   {incidents.length === 0 && <p className={settled}>No incidents logged yet.</p>}
-                  {byStatus(incidents).map((incident) => (
+                  {byRecent(incidents).map((incident) => (
                     <IncidentCard
                       key={incident.id}
                       incident={incident}
@@ -234,7 +235,7 @@ export default function SeniorPage() {
                   {notes.length === 0 && (
                     <p className={settled}>No notes yet. They appear after the support worker writes them.</p>
                   )}
-                  {notes.map((note) => (
+                  {byRecent(notes).map((note) => (
                     <NoteReview
                       key={note.id}
                       note={note}
@@ -259,7 +260,7 @@ export default function SeniorPage() {
                   <div>
                     <p className={fieldLabel}>Name</p>
                     <div className="flex flex-wrap gap-2">
-                      {residents.map((person) => {
+                      {byRecent(residents).map((person) => {
                         const chosen = person.id === actionResidentId;
                         return (
                           <button
@@ -269,7 +270,14 @@ export default function SeniorPage() {
                             className={chosen ? btn : ghost}
                             onClick={() => setResidentId(person.id)}
                           >
-                            {person.name}
+                            <span className="block text-left leading-tight">
+                              {person.name}
+                              {localWhen(person.at) && (
+                                <span className={`mt-0.5 block text-xs font-normal ${chosen ? "text-white/80" : "text-soft"}`}>
+                                  {localWhen(person.at)}
+                                </span>
+                              )}
+                            </span>
                           </button>
                         );
                       })}
@@ -330,7 +338,7 @@ export default function SeniorPage() {
                   <div>
                     <p className={fieldLabel}>Name</p>
                     <div className="flex flex-wrap gap-2">
-                      {residents.map((person) => {
+                      {byRecent(residents).map((person) => {
                         const chosen = person.id === actionResidentId;
                         return (
                           <button
@@ -340,7 +348,14 @@ export default function SeniorPage() {
                             className={chosen ? btn : ghost}
                             onClick={() => setResidentId(person.id)}
                           >
-                            {person.name}
+                            <span className="block text-left leading-tight">
+                              {person.name}
+                              {localWhen(person.at) && (
+                                <span className={`mt-0.5 block text-xs font-normal ${chosen ? "text-white/80" : "text-soft"}`}>
+                                  {localWhen(person.at)}
+                                </span>
+                              )}
+                            </span>
                           </button>
                         );
                       })}
@@ -349,7 +364,7 @@ export default function SeniorPage() {
                   {actionResident && (
                     <ResidentHandover
                       person={actionResident}
-                      tasks={byStatus(shiftActions).filter(
+                      tasks={byRecent(shiftActions).filter(
                         (item) => item.residentId === actionResident.id && (item.flagId || item.incidentId),
                       )}
                       flags={flags}
@@ -379,16 +394,26 @@ function flagCount(count) {
   return count === 1 ? "1 flag" : `${count} flags`;
 }
 
+function SectionTime({ label, at }) {
+  const when = localWhen(at);
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+      <p className={kick}>{label}</p>
+      {when && <p className="text-sm text-soft">{when}</p>}
+    </div>
+  );
+}
+
 function FlagGroups({ notes, flags, busyId, onReview, onSave }) {
   const grouped = new Set();
-  const groups = notes
+  const groups = byRecent(notes)
     .map((note) => {
-      const mine = flags.filter((flag) => flag.noteId === note.id);
+      const mine = byRecent(flags.filter((flag) => flag.noteId === note.id));
       mine.forEach((flag) => grouped.add(flag.id));
       return { note, flags: mine };
     })
     .filter((group) => group.flags.length);
-  const loose = flags.filter((flag) => !grouped.has(flag.id));
+  const loose = byRecent(flags.filter((flag) => !grouped.has(flag.id)));
 
   return (
     <>
@@ -426,7 +451,7 @@ function NoteFlagGroup({ note, flags, busyId, onReview, onSave }) {
       <header className={sheetHead}>
         <div>
           <h2 className={cardTitle}>{note.residentName}</h2>
-          <p className="text-soft">{note.when}</p>
+          <p className="text-soft">{localWhen(note.at)}</p>
         </div>
         <p className="text-sm font-semibold text-ink">{flagCount(flags.length)}</p>
       </header>
@@ -486,7 +511,7 @@ function NoteReview({ note, busyId, onSave, onApprove }) {
         <div>
           <h2 className={cardTitle}>{note.residentName}</h2>
           <p className="text-soft">
-            {note.when}
+            {localWhen(note.at)}
             {" · "}
             {note.approved ? "Approved" : note.sent ? "Sent for approval" : "Waiting on the note"}
           </p>
@@ -590,16 +615,16 @@ function ActionHandover({ action, flags, incidents, notes, name, advice, busyId,
     <section className="rounded-xl border border-line bg-white px-3.5 py-3">
       <div className="grid gap-3">
         <div>
-          <p className={kick}>Note</p>
+          <SectionTime label="Note" at={note?.at} />
           <p className="mt-1 whitespace-pre-wrap leading-relaxed">{noteText || "No note is linked to this flag."}</p>
         </div>
         <div>
-          <p className={kick}>{incident && !flag ? "Incident" : "Flag"}</p>
+          <SectionTime label={incident && !flag ? "Incident" : "Flag"} at={flag?.at || incident?.at} />
           {concern && <p className="mt-1 font-semibold break-words">{concern}</p>}
           {concernDetail && <p className={`${meta} mt-1 break-words`}>{concernDetail}</p>}
         </div>
         <div>
-          <p className={kick}>Actions</p>
+          <SectionTime label="Actions" at={action.at} />
           <ActionPoints points={actionPoints(action)} />
         </div>
       </div>
@@ -613,7 +638,7 @@ function ActionHandover({ action, flags, incidents, notes, name, advice, busyId,
       )}
       {handoverLines.length > 0 && (
         <div className="mt-3">
-          <p className={kick}>Handover</p>
+          <SectionTime label="Handover" at={action.at} />
           {editing ? (
             <textarea
               id={`handover-${action.id}`}
@@ -764,11 +789,11 @@ function ConcernActions({
     <section className="rounded-xl border border-line bg-white px-3.5 py-3">
       <div className="grid gap-3">
         <div>
-          <p className={kick}>Note</p>
+          <SectionTime label="Note" at={note?.at} />
           <p className="mt-1 whitespace-pre-wrap leading-relaxed">{noteText || "No note is linked."}</p>
         </div>
         <div>
-          <p className={kick}>{flag ? "Flag" : "Incident"}</p>
+          <SectionTime label={flag ? "Flag" : "Incident"} at={flag?.at || incident?.at} />
           <p className="mt-1 font-semibold break-words">{concern}</p>
           {detail && <p className={`${meta} mt-1 break-words`}>{detail}</p>}
         </div>
@@ -787,10 +812,13 @@ function ConcernActions({
           <ActionDraft item={draft} busy={saving} onSave={onSave} />
         </div>
       )}
-      {saved.map((item) => (
+      {byRecent(saved).map((item) => (
         <div className="mt-3" key={item.id}>
           <div className="flex items-start justify-between gap-3">
-            <p className={kick}>Actions</p>
+            <div>
+              <p className={kick}>Actions</p>
+              {localWhen(item.at) && <p className="mt-1 text-sm text-soft">{localWhen(item.at)}</p>}
+            </div>
             <button
               type="button"
               className={`${item.status === "done" ? ghost : btn} shrink-0 whitespace-nowrap`}
@@ -932,6 +960,7 @@ function FlagCard({ flag, busyId, grouped = false, onReview, onSave }) {
           ) : (
             <h3 className={recordTitle}>{flag.title}</h3>
           )}
+          {localWhen(flag.at) && <p className="mt-1 text-sm text-soft">{localWhen(flag.at)}</p>}
           {!grouped && <p className={meta}>{flag.residentName}</p>}
         </div>
         <span className={tag(flag.status !== "open")}>{flag.status === "open" ? "Open" : "Reviewed"}</span>
@@ -1004,7 +1033,8 @@ function IncidentCard({ incident, busyId, onTrack }) {
           <p className={incidentKick}>Incident · {labelFor(INCIDENT_KINDS, incident.kind)}</p>
           <h3 className={recordTitle}>{incident.residentName}</h3>
           <p className={meta}>
-            {incident.when} · {incident.reportedBy}
+            {localWhen(incident.at)}
+            {incident.reportedBy ? ` · ${incident.reportedBy}` : ""}
           </p>
         </div>
         <label className="block min-w-[140px] text-xs font-semibold tracking-[0.08em] text-soft uppercase max-lg:min-w-0">

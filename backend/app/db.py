@@ -179,6 +179,12 @@ def init_db() -> None:
         conn.execute(AUDIT_TABLE)
         conn.execute(SETTINGS_TABLE)
         conn.execute(SHIFT_TABLE)
+        for table in ("residents", "notes", "flags", "incidents", "actions", "audit_log"):
+            conn.execute(
+                sql.SQL(
+                    "ALTER TABLE {} ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+                ).format(sql.Identifier(table))
+            )
         seed(conn)
 
 
@@ -219,6 +225,14 @@ def _tags(value: str | None) -> list[str]:
     return [part.strip() for part in value.split(",") if part.strip()]
 
 
+def _iso(value) -> str:
+    if value is None:
+        return ""
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
 def resident_dict(row: dict) -> dict:
     return {
         "id": row["id"],
@@ -233,6 +247,7 @@ def resident_dict(row: dict) -> dict:
         "points": _points(row.get("points")),
         "sent": bool(row["sent"]),
         "approved": bool(row["approved"]),
+        "at": _iso(row.get("created_at")),
     }
 
 
@@ -278,6 +293,7 @@ def flag_dict(row: dict) -> dict:
         "source_quote": row.get("source_quote") or "",
         "note_id": row.get("note_id") or "",
         "status": row["status"],
+        "at": _iso(row.get("created_at")),
     }
 
 
@@ -293,6 +309,7 @@ def note_dict(row: dict) -> dict:
         "sent": bool(row["sent"]),
         "approved": bool(row["approved"]),
         "when_label": row["when_label"],
+        "at": _iso(row.get("created_at")),
     }
 
 
@@ -307,6 +324,7 @@ def incident_dict(row: dict) -> dict:
         "summary": row["summary"],
         "status": row["status"],
         "when_label": row["when_label"],
+        "at": _iso(row.get("created_at")),
     }
 
 
@@ -324,6 +342,7 @@ def action_dict(row: dict) -> dict:
         "flag_id": row.get("flag_id") or "",
         "incident_id": row.get("incident_id") or "",
         "handover": row.get("handover") or "",
+        "at": _iso(row.get("created_at")),
     }
 
 
@@ -333,7 +352,7 @@ def audit_dict(row: dict) -> dict:
         "actor_name": row["actor_name"],
         "action": row["action"],
         "subject": row["subject"],
-        "at_label": row["at_label"],
+        "at_label": _iso(row.get("created_at")) or row["at_label"],
     }
 
 

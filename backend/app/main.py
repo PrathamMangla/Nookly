@@ -168,18 +168,22 @@ def get_desk():
         return {
             "residents": [
                 resident_dict(row)
-                for row in conn.execute("SELECT * FROM residents ORDER BY position").fetchall()
+                for row in conn.execute(
+                    "SELECT * FROM residents ORDER BY created_at DESC, position DESC"
+                ).fetchall()
             ],
             "notes": [note_dict(row) for row in conn.execute(_joined("notes")).fetchall()],
             "users": [
                 user_dict(row) for row in conn.execute("SELECT * FROM users ORDER BY position").fetchall()
             ],
-            "flags": [flag_dict(row) for row in conn.execute(_joined("flags", "ASC")).fetchall()],
+            "flags": [flag_dict(row) for row in conn.execute(_joined("flags")).fetchall()],
             "incidents": [incident_dict(row) for row in conn.execute(_joined("incidents")).fetchall()],
             "actions": [action_dict(row) for row in conn.execute(_joined("actions")).fetchall()],
             "audit": [
                 audit_dict(row)
-                for row in conn.execute("SELECT * FROM audit_log ORDER BY position DESC").fetchall()
+                for row in conn.execute(
+                    "SELECT * FROM audit_log ORDER BY created_at DESC, position DESC"
+                ).fetchall()
             ],
             "settings": [
                 setting_dict(row)
@@ -536,7 +540,7 @@ def save_action_handover(action_id: str, body: HandoverIn):
             """
             SELECT title, handover FROM actions
             WHERE resident_id = %s AND handover <> ''
-            ORDER BY position
+            ORDER BY created_at DESC, position DESC
             """,
             (action["resident_id"],),
         ).fetchall()
@@ -666,7 +670,7 @@ def update_setting(group: str, setting_id: str, body: SettingUpdate):
 
 def _residents() -> list[dict]:
     with session() as conn:
-        rows = conn.execute("SELECT * FROM residents ORDER BY position").fetchall()
+        rows = conn.execute("SELECT * FROM residents ORDER BY created_at DESC, position DESC").fetchall()
         return [resident_dict(row) for row in rows]
 
 
@@ -686,7 +690,7 @@ def _notes() -> list[dict]:
 
 def _flags() -> list[dict]:
     with session() as conn:
-        rows = conn.execute(_joined("flags", "ASC")).fetchall()
+        rows = conn.execute(_joined("flags")).fetchall()
         return [flag_dict(row) for row in rows]
 
 
@@ -704,7 +708,7 @@ def _actions() -> list[dict]:
 
 def _audit_rows() -> list[dict]:
     with session() as conn:
-        rows = conn.execute("SELECT * FROM audit_log ORDER BY position DESC").fetchall()
+        rows = conn.execute("SELECT * FROM audit_log ORDER BY created_at DESC, position DESC").fetchall()
         return [audit_dict(row) for row in rows]
 
 
@@ -719,13 +723,12 @@ def _shift() -> dict:
         return shift_dict(_shift_row(conn))
 
 
-def _joined(table: str, order: str = "DESC") -> str:
-    direction = "ASC" if order == "ASC" else "DESC"
+def _joined(table: str) -> str:
     return f"""
         SELECT t.*, r.name AS resident_name, r.room
         FROM {table} t
         JOIN residents r ON r.id = t.resident_id
-        ORDER BY t.position {direction}
+        ORDER BY t.created_at DESC, t.position DESC
     """
 
 

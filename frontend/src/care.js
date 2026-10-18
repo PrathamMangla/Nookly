@@ -35,15 +35,30 @@ export function byStatus(rows) {
   return [...rows].sort((a, b) => (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9));
 }
 
+export function byRecent(rows) {
+  return [...(rows || [])].sort((a, b) => (Date.parse(b?.at || "") || 0) - (Date.parse(a?.at || "") || 0));
+}
+
+export function localWhen(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
 export function residentNotes(residentId, notes) {
-  return (notes || []).filter((note) => note.residentId === residentId);
+  return byRecent((notes || []).filter((note) => note.residentId === residentId));
 }
 
 export function residentSources(residentId, flags, incidents) {
   return {
-    flags: (flags || []).filter((flag) => flag.residentId === residentId),
-    incidents: (incidents || []).filter(
-      (incident) => incident.residentId === residentId && incident.status !== "closed",
+    flags: byRecent((flags || []).filter((flag) => flag.residentId === residentId)),
+    incidents: byRecent(
+      (incidents || []).filter((incident) => incident.residentId === residentId && incident.status !== "closed"),
     ),
   };
 }
